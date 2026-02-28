@@ -1,10 +1,10 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "autonomy-engine"
-version = "1.1.0"
+version = "1.2.0"
 description = "Prefect-based autonomous build engine with human-in-the-loop decision gates"
 requires-python = ">=3.10"
 dependencies = [
@@ -12,6 +12,7 @@ dependencies = [
     "anthropic",
     "openai",
     "pydantic>=2.0",
+    "python-dotenv",
     "pyyaml",
 ]
 
@@ -21,6 +22,18 @@ dev = [
     "ruff",
 ]
 
+[tool.setuptools.packages.find]
+include = ["engine*", "flows*", "intake*", "tasks*"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+exclude = ["customer_database"]
+
+[tool.ruff.lint.per-file-ignores]
+# load_dotenv() must run before other imports
+"flows/autonomous_flow.py" = ["E402"]
+"intake/intake.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

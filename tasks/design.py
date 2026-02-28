@@ -2,10 +2,10 @@
 
 from prefect import task
 
-from engine.context import get_prompts_dir, get_state_dir
-from engine.decision_gates import DecisionRequired
+from engine.context import get_prompts_dir
+from engine.decision_gates import DecisionRequired, decision_exists, load_decision
 from engine.llm_provider import get_provider
-from engine.state_loader import decision_exists, load_state_file
+from engine.state_loader import load_state_file, save_state_file
 from engine.tracer import hash_prompt, trace
 
 
@@ -16,20 +16,12 @@ def design_system() -> None:
     constraints = load_state_file("inputs/CONSTRAINTS.md")
     non_goals = load_state_file("inputs/NON_GOALS.md")
 
-    state_dir = get_state_dir()
-
-    # Decision guard: if a prior run raised DecisionRequired, check that
-    # the decision was recorded before re-running
+    # Decision guard: if this run already has an architecture decision,
+    # feed the chosen approach back into the prompt
     decision_key = "architecture_choice_needed"
-    if (state_dir / "decisions" / f"{decision_key}.md").exists():
-        decision_content = load_state_file(f"decisions/{decision_key}.md")
-        # Extract choice from decision file
-        for line in decision_content.splitlines():
-            if line.startswith("Choice:"):
-                chosen = line.split(":", 1)[1].strip()
-                break
-        else:
-            chosen = ""
+    if decision_exists(decision_key):
+        record = load_decision(decision_key)
+        chosen = record["selected"]
         extra_context = f"\n\nPrevious decision — chosen approach: {chosen}\n"
     else:
         extra_context = ""
@@ -50,12 +42,10 @@ def design_system() -> None:
     if "DECISION_REQUIRED:" in architecture:
         marker = architecture.split("DECISION_REQUIRED:")[1].strip()
         options = [opt.strip() for opt in marker.split("|") if opt.strip()]
-        if not decision_exists("architecture_choice_needed"):
-            raise DecisionRequired("Architecture choice needed", options)
+        if not decision_exists(decision_key):
+            raise DecisionRequired(decision_key, "design", options)
 
     output_path = "designs/ARCHITECTURE.md"
-    from engine.state_loader import save_state_file
-
     save_state_file(output_path, architecture)
 
     trace(
@@ -64,4 +54,6 @@ def design_system() -> None:
         outputs=[output_path],
         model=provider.model,
         prompt_hash=p_hash,
+        provider=provider.provider,
+        max_tokens=provider.max_tokens,
     )

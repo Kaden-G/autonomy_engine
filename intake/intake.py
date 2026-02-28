@@ -3,25 +3,22 @@
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import yaml
 from pydantic import ValidationError
 
-from engine.context import ENGINE_ROOT, get_state_dir, init as init_context
+from engine.context import ENGINE_ROOT, get_prompts_dir, get_state_dir, init as init_context
 from intake.renderer import render_all
 from intake.schema import (
-    AutonomyLevel,
     Constraints,
-    DecisionAuthority,
-    DeliveryFormat,
     Domain,
-    Execution,
-    LLMProvider,
-    Notifications,
-    NotificationMethod,
     Outputs,
     ProjectInfo,
     ProjectSpec,
@@ -39,9 +36,7 @@ SECTIONS = [
     ("constraints", "Constraints"),
     ("non_goals", "Non-Goals"),
     ("acceptance", "Acceptance Criteria"),
-    ("execution", "Execution Settings"),
     ("outputs", "Expected Outputs"),
-    ("notifications", "Notifications"),
 ]
 
 
@@ -62,8 +57,8 @@ def _prompt(label: str, required: bool = True, default: str = "") -> str:
 
 def _prompt_list(label: str, min_items: int = 0) -> list[str]:
     print(f"  {label}")
-    print(f"    Paste or type items (one per line, or semicolon-separated).")
-    print(f"    Empty line to finish.")
+    print("    Paste or type items (one per line, or semicolon-separated).")
+    print("    Empty line to finish.")
     items = []
     while True:
         value = input("    - ").strip()
@@ -160,35 +155,11 @@ def _collect_acceptance(current: dict) -> dict:
     return {"acceptance": items}
 
 
-def _collect_execution(current: dict) -> dict:
-    print("\n>> Execution Settings")
-    autonomy = _prompt_choice("Autonomy level", ["full", "gated"],
-                              current.get("autonomy", "gated"))
-    authority = _prompt_choice("Decision authority", ["human", "engine"],
-                               current.get("authority", "human"))
-    provider = _prompt_choice("LLM provider", ["claude", "openai"],
-                              current.get("provider", "claude"))
-    return {"autonomy": autonomy, "authority": authority, "provider": provider}
-
-
 def _collect_outputs(current: dict) -> dict:
     print("\n>> Expected Outputs")
     _show_current_list(current.get("artifacts", []))
     artifacts = _prompt_list("Expected artifacts", min_items=1)
-    delivery = _prompt_choice("Delivery format", ["repo", "docs", "cli"],
-                              current.get("delivery", "repo"))
-    return {"artifacts": artifacts, "delivery": delivery}
-
-
-def _collect_notifications(current: dict) -> dict:
-    print("\n>> Notifications")
-    notif_enabled = _prompt_yn("Enable notifications",
-                               default=current.get("enabled", False))
-    notif_method = "none"
-    if notif_enabled:
-        notif_method = _prompt_choice("Method", ["slack", "email"],
-                                      current.get("method", "slack"))
-    return {"enabled": notif_enabled, "method": notif_method}
+    return {"artifacts": artifacts}
 
 
 def _show_current_list(items: list[str], label: str = "Current items") -> None:
@@ -206,9 +177,7 @@ COLLECTORS = {
     "constraints": _collect_constraints,
     "non_goals": _collect_non_goals,
     "acceptance": _collect_acceptance,
-    "execution": _collect_execution,
     "outputs": _collect_outputs,
-    "notifications": _collect_notifications,
 }
 
 
@@ -232,18 +201,8 @@ def _build_spec(data: dict) -> ProjectSpec:
         ),
         non_goals=data.get("non_goals", []),
         acceptance_criteria=data["acceptance"],
-        execution=Execution(
-            autonomy_level=AutonomyLevel(data.get("autonomy", "gated")),
-            decision_authority=DecisionAuthority(data.get("authority", "human")),
-            llm_provider=LLMProvider(data.get("provider", "claude")),
-        ),
         outputs=Outputs(
             expected_artifacts=data["artifacts"],
-            delivery_format=DeliveryFormat(data.get("delivery", "repo")),
-        ),
-        notifications=Notifications(
-            enabled=data.get("enabled", False),
-            method=NotificationMethod(data.get("method", "none")),
         ),
     )
 
@@ -261,13 +220,7 @@ def _data_from_spec(spec: ProjectSpec) -> dict:
         "security": spec.constraints.security,
         "non_goals": list(spec.non_goals),
         "acceptance": list(spec.acceptance_criteria),
-        "autonomy": spec.execution.autonomy_level.value,
-        "authority": spec.execution.decision_authority.value,
-        "provider": spec.execution.llm_provider.value,
         "artifacts": list(spec.outputs.expected_artifacts),
-        "delivery": spec.outputs.delivery_format.value,
-        "enabled": spec.notifications.enabled,
-        "method": spec.notifications.method.value,
     }
 
 
@@ -295,20 +248,18 @@ def _print_summary(data: dict) -> None:
     print(f"  [6] Acceptance:    {len(data.get('acceptance', []))} criteria")
     for item in data.get("acceptance", []):
         print(f"        - {item}")
-    print(f"  [7] Execution:     {data.get('autonomy', 'gated')} / {data.get('authority', 'human')} / {data.get('provider', 'claude')}")
-    print(f"  [8] Outputs:       {', '.join(data.get('artifacts', []))} ({data.get('delivery', 'repo')})")
-    notif = "enabled" if data.get("enabled") else "disabled"
-    print(f"  [9] Notifications: {notif}")
+    print(f"  [7] Outputs:       {', '.join(data.get('artifacts', []))}")
     print()
 
 
 def _review_loop(data: dict) -> dict | None:
     """Show summary, let user edit sections by number, confirm, or abort."""
     section_keys = [key for key, _ in SECTIONS]
+    max_section = len(SECTIONS)
 
     while True:
         _print_summary(data)
-        print("  Enter a number (1-9) to edit that section")
+        print(f"  Enter a number (1-{max_section}) to edit that section")
         print("  'c' to confirm and write  |  'q' to abort")
         choice = input("\n  > ").strip().lower()
 
@@ -316,7 +267,7 @@ def _review_loop(data: dict) -> dict | None:
             return None
         if choice == "c":
             return data
-        if choice in [str(i) for i in range(1, 10)]:
+        if choice in [str(i) for i in range(1, max_section + 1)]:
             idx = int(choice) - 1
             section_key = section_keys[idx]
             collector = COLLECTORS[section_key]
@@ -326,7 +277,7 @@ def _review_loop(data: dict) -> dict | None:
             data.update(updates)
             data.pop("_domain", None)
         else:
-            print("    ^ Enter 1-9, 'c', or 'q'")
+            print(f"    ^ Enter 1-{max_section}, 'c', or 'q'")
 
 
 # ── Project scaffolding ──────────────────────────────────────────────────────
@@ -362,6 +313,51 @@ def _scaffold_project_dir(target: Path) -> None:
     print(f"Scaffolded project directory: {target}")
 
 
+# ── LLM-powered spec generation ──────────────────────────────────────────────
+
+def _generate_spec_suggestions(data: dict) -> dict | None:
+    """Call the LLM to auto-generate remaining spec fields from the project seed.
+
+    Returns a flat dict of generated fields on success, or None on any failure.
+    """
+    try:
+        from engine.llm_provider import get_provider
+
+        template_path = get_prompts_dir() / "intake_suggest.txt"
+        prompt_template = template_path.read_text()
+        prompt = prompt_template.format(
+            name=data.get("name", ""),
+            description=data.get("description", ""),
+            domain=data.get("domain", "software"),
+        )
+
+        provider = get_provider()
+        response = provider.generate(prompt)
+
+        # Extract YAML block from between ```yaml and ``` fences
+        match = re.search(r"```yaml\s*\n(.*?)```", response, re.DOTALL)
+        if not match:
+            print("  Warning: LLM response did not contain a valid YAML block.")
+            return None
+
+        parsed = yaml.safe_load(match.group(1))
+        if not isinstance(parsed, dict):
+            print("  Warning: parsed YAML is not a mapping.")
+            return None
+
+        # Validate required keys
+        for key in ("functional", "acceptance", "artifacts"):
+            if key not in parsed or not parsed[key]:
+                print(f"  Warning: generated spec missing required key '{key}'.")
+                return None
+
+        return parsed
+
+    except Exception as exc:
+        print(f"  Warning: spec generation failed ({exc}). Continuing manually.")
+        return None
+
+
 # ── Main collection flow ─────────────────────────────────────────────────────
 
 def collect_interactive() -> ProjectSpec | None:
@@ -371,8 +367,22 @@ def collect_interactive() -> ProjectSpec | None:
 
     data: dict = {}
 
-    # Initial walk-through: collect all sections
+    # Always collect the project seed manually
     data.update(_collect_project(data))
+
+    # Offer LLM-powered generation for remaining sections
+    if _prompt_yn("Generate suggestions for remaining sections from your description", default=True):
+        print("\n  Generating suggestions...")
+        suggestions = _generate_spec_suggestions(data)
+        if suggestions:
+            data.update(suggestions)
+            print("  Done. Review the generated spec below.\n")
+            result = _review_loop(data)
+            return _build_spec(result) if result else None
+        else:
+            print("  Generation failed. Continuing with manual entry.\n")
+
+    # Manual fallthrough: collect all remaining sections
     data.update(_collect_functional(data))
     data.update(_collect_non_functional(data))
     data["_domain"] = data.get("domain", "software")
@@ -380,9 +390,7 @@ def collect_interactive() -> ProjectSpec | None:
     data.pop("_domain", None)
     data.update(_collect_non_goals(data))
     data.update(_collect_acceptance(data))
-    data.update(_collect_execution(data))
     data.update(_collect_outputs(data))
-    data.update(_collect_notifications(data))
 
     # Review and edit loop
     result = _review_loop(data)

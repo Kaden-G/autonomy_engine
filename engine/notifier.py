@@ -1,4 +1,11 @@
-"""Notification stubs — Slack / email with logging fallback."""
+"""Notification via Python logging.
+
+All notifications are emitted as log messages.  To send real alerts
+(Slack, email, PagerDuty, etc.) replace or extend this module.
+
+The ``notifications.enabled`` flag in ``config.yml`` controls whether
+messages are logged at INFO (enabled) or suppressed (disabled).
+"""
 
 import logging
 
@@ -10,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def notify(message: str, config_path: str | None = None) -> None:
-    """Send a notification via the configured method, or log if disabled."""
+    """Log a notification message if notifications are enabled in config."""
     if config_path is None:
         config_path = str(get_config_path())
     with open(config_path) as f:
@@ -19,35 +26,7 @@ def notify(message: str, config_path: str | None = None) -> None:
     notif = config.get("notifications", {})
 
     if not notif.get("enabled", False):
-        logger.info("Notification (disabled): %s", message)
+        logger.debug("Notification (disabled): %s", message)
         return
 
-    method = notif.get("method", "slack")
-
-    if method == "slack":
-        _send_slack(message, notif.get("slack_webhook_url", ""))
-    elif method == "email":
-        _send_email(message, notif.get("email_to", ""))
-    else:
-        logger.warning("Unknown notification method '%s', falling back to log", method)
-        logger.info("Notification: %s", message)
-
-
-def _send_slack(message: str, webhook_url: str) -> None:
-    """Send a Slack webhook notification. Stub — logs instead of sending."""
-    if not webhook_url:
-        logger.warning("Slack webhook URL not configured, logging instead")
-        logger.info("Slack notification: %s", message)
-        return
-    # Real implementation would POST to webhook_url
-    logger.info("Slack notification sent: %s", message)
-
-
-def _send_email(message: str, to_address: str) -> None:
-    """Send an email notification. Stub — logs instead of sending."""
-    if not to_address:
-        logger.warning("Email address not configured, logging instead")
-        logger.info("Email notification: %s", message)
-        return
-    # Real implementation would use smtplib
-    logger.info("Email notification sent to %s: %s", to_address, message)
+    logger.info("Notification: %s", message)

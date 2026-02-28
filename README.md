@@ -6,7 +6,7 @@ A Prefect-based autonomous build engine with human-in-the-loop decision gates.
 
 - Automating structured software build workflows (design, implement, test, verify, extract)
 - Providing human oversight at critical decision points via Prefect's pause/resume
-- Maintaining full traceability of every step, prompt, and decision in `TRACE.json`
+- Maintaining full traceability of every step, prompt, and decision in hash-chained `trace.jsonl`
 - Supporting multiple LLM providers (Claude, OpenAI) behind a unified interface
 - Extracting generated code into a standalone, ready-to-run project folder
 
@@ -26,13 +26,13 @@ A Prefect-based autonomous build engine with human-in-the-loop decision gates.
 └────────────┬─────────────┘
              │ validated, complete
 ┌────────────▼─────────────┐
-│ Normalized Project Spec  │  ← machine contract
+│ Normalized Project Spec  │  ← machine contract (what to build)
 │ (state/inputs/)          │
 └────────────┬─────────────┘
              │ read-only
 ┌────────────▼─────────────┐
 │ Autonomous Engine        │  ← Phase 1: machine-driven, no ambiguity
-│ (Prefect flow)           │
+│ (Prefect flow)           │     runtime config from config.yml (how to run)
 └──────────────────────────┘
 ```
 
@@ -41,18 +41,18 @@ A Prefect-based autonomous build engine with human-in-the-loop decision gates.
 ```
 [intake]    ──→ state/inputs/project_spec.yml + rendered artifacts
                     ↓
-[bootstrap] ──→ verify inputs, init TRACE.json
+[bootstrap] ──→ verify inputs, init trace.jsonl
                     ↓
 [design]    ──→ state/designs/              ←── may pause at decision gate
                     ↓
 [implement] ──→ state/implementations/
                     ↓
-[test]      ──→ state/tests/
-                    ↓
-[verify]    ──→ state/tests/VERIFICATION.md
-                    ↓
 [extract]   ──→ ../<project-name>/          ←── standalone project folder
                  + state/build/MANIFEST.md
+                    ↓
+[test]      ──→ state/tests/                ←── may trigger gate on failures
+                    ↓
+[verify]    ──→ state/tests/VERIFICATION.md ←── may trigger gate on REJECTED
 ```
 
 The **extract** step parses `IMPLEMENTATION.md` for fenced code blocks marked with
@@ -63,27 +63,38 @@ regex parsing.
 ### Core Principles
 
 1. **If it isn't written, it doesn't exist** — tasks communicate through files in `state/`, not return values
-2. **Gates are policy, not behavior** — tasks raise `DecisionRequired`; only the flow may pause execution
+2. **Gates are policy, not behavior** — tasks raise `DecisionRequired`; the flow applies the policy from `DECISION_GATES.yml`
 3. **Structured state** — `state/` has predefined subfolders, not a flat directory
-4. **Traceability** — every task appends to `state/TRACE.json` with inputs, outputs, model, and prompt hash
-5. **No ambiguity at runtime** — all ambiguity is resolved during intake, before execution begins
+4. **Traceability** — every task appends to `trace.jsonl` with inputs, outputs, model, provider, max_tokens, and prompt hash
+5. **Spec says what, config says how** — the project spec captures *what to build*; `config.yml` captures *how to run the engine* (LLM provider, sandbox, notifications)
 
 ### Decision Gates
 
-After intake, decision gates are **only** for:
-- Architectural tradeoffs (A vs B)
-- Performance vs cost decisions
-- Optional enhancements
+Gate policies are defined in `templates/DECISION_GATES.yml` with three modes per stage:
+
+- **pause** — block for human input via Prefect UI (default for `design`)
+- **auto** — auto-select the configured default option
+- **skip** — swallow the gate and continue (default for `implement`, `test`, `verify`)
+
+Gates trigger on:
+- Architectural tradeoffs (design stage, LLM signals ambiguity)
+- Test failures (test stage, non-zero exit codes detected)
+- Verification rejection (verify stage, LLM outputs REJECTED)
 
 **Not** for missing requirements, clarification questions, or incomplete specs. Those are blocked at intake.
-
-Gate definitions live in `templates/DECISION_GATES.yml`.
 
 ## Setup
 
 ```bash
 cd ~/Desktop/autonomy_engine
-pip install -e .
+pip install -e ".[dev]"
+```
+
+Set API keys via environment variables (or `.env` file):
+
+```bash
+export ANTHROPIC_API_KEY="sk-..."   # for Claude
+export OPENAI_API_KEY="sk-..."      # for OpenAI
 ```
 
 ## Usage
@@ -136,7 +147,7 @@ python flows/autonomous_flow.py --project-dir ~/projects/solo1
 
 The engine will refuse to start if intake has not been completed.
 
-The flow will appear in the Prefect UI at `http://localhost:4200`. If a decision gate triggers, resume from the UI.
+The flow will appear in the Prefect UI at `http://localhost:4200`. If a decision gate triggers with `pause` policy, resume from the UI.
 
 After a successful run, the final project files are extracted to a sibling directory:
 
@@ -162,11 +173,10 @@ When using `--project-dir`, the scaffolded directory looks like:
   config.yml              # Copied from engine — edit to customize
   templates/              # Copied from engine — edit to customize
     DECISION_GATES.yml
-    REQUIREMENTS.md, CONSTRAINTS.md, NON_GOALS.md, ACCEPTANCE_CRITERIA.md
     prompts/
-      design.txt, implement.txt, test.txt, verify.txt
+      design.txt, implement.txt, verify.txt
   state/
-    TRACE.json
+    runs/<run_id>/trace.jsonl
     inputs/ designs/ implementations/ tests/ decisions/ build/
 ```
 
@@ -175,34 +185,65 @@ from previous behavior).
 
 ## Configuration
 
-Edit `config.yml` to switch LLM providers and configure notifications:
+### config.yml — Runtime settings
 
 ```yaml
 llm:
-  provider: "claude"  # or "openai"
+  provider: "claude"       # or "openai"
+  max_tokens: 16384
+  claude:
+    model: "claude-sonnet-4-20250514"
+  openai:
+    model: "gpt-4o"
+
+notifications:
+  enabled: false           # log-only; replace engine/notifier.py for real alerts
+
+sandbox:
+  enabled: true            # isolate test execution in temp workspace
+  install_deps: true
+
+checks: []                 # approved test commands (see config.yml for examples)
 ```
 
-Set API keys via environment variables: `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`.
+### DECISION_GATES.yml — Gate policies
+
+```yaml
+gates:
+  design:
+    policy: "pause"        # pause | auto | skip
+  test:
+    policy: "skip"
+    default_option: "continue"
+  verify:
+    policy: "skip"
+    default_option: "accept"
+```
 
 ## Project Structure
 
 ```
 intake/             Project intake CLI and Pydantic schema
-  schema.py         Canonical ProjectSpec definition
+  schema.py         ProjectSpec definition (what to build)
   renderer.py       Generates engine artifacts from validated spec
-  intake.py         CLI entry point (new-project, from-file, validate)
+  intake.py         CLI entry point (new-project, from-file, edit, validate)
 engine/             Core modules (LLM provider, gates, state, tracing, notifications)
   context.py        Singleton path context — resolves project vs engine root paths
+  decision_gates.py Gate policies (pause/auto/skip) loaded from DECISION_GATES.yml
+  llm_provider.py   Claude + OpenAI behind a unified interface
+  tracer.py         Hash-chained trace entries (trace.jsonl)
+  evidence.py       Structured command execution and evidence capture
+  notifier.py       Notification via Python logging (replace for real alerts)
 flows/              Prefect flow definition — the entry point
 tasks/              Individual pipeline stages as Prefect tasks
-templates/          Skeleton templates and prompt files
-  prompts/          LLM prompt files (tracked by SHA-256 hash in TRACE.json)
+templates/          Gate policies and LLM prompt templates
+  prompts/          LLM prompt files (tracked by SHA-256 hash in trace)
 state/              Runtime artifacts (gitignored except .gitkeep)
+  runs/<id>/        Per-run trace, evidence, and decisions
   inputs/           Intake-generated artifacts (project_spec.yml + rendered markdown)
   designs/          Architecture documents
   implementations/  Generated code
   tests/            Test and verification results
-  decisions/        Human decisions recorded from gates
   build/            Extraction manifest (MANIFEST.md)
-  TRACE.json        Traceability spine
+tests/              Pytest test suite
 ```

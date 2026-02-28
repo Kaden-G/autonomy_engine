@@ -1,12 +1,30 @@
 llm:
   provider: "claude"  # "claude" or "openai"
+  max_tokens: 16384   # max output tokens per LLM call
   claude:
     model: "claude-sonnet-4-20250514"
   openai:
     model: "gpt-4o"
 
+# Notifications log to the Python logger.  To receive real alerts,
+# replace engine/notifier.py with a Slack/email implementation.
 notifications:
   enabled: false
-  method: "slack"  # "slack" or "email"
-  slack_webhook_url: ""
-  email_to: ""
+
+# Sandbox settings for the test stage.
+# When enabled, checks run in an isolated temp workspace with its own virtualenv.
+sandbox:
+  enabled: true        # run checks in an isolated copy (default: true)
+  install_deps: true   # install requirements.txt / pyproject.toml in the sandbox
+
+# Approved commands for the test stage.
+# Only commands listed here will be executed — the LLM cannot invent its own.
+# Each entry needs: name (identifier) and command (shell command).
+# checks:
+#   - name: "tests"
+#     command: "python -m pytest"
+#   - name: "lint"
+#     command: "python -m ruff check ."
+#   - name: "typecheck"
+#     command: "python -m mypy ."
+checks: []

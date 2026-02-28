@@ -34,7 +34,7 @@ def _render_requirements(spec: ProjectSpec) -> str:
     lines = [
         "# Requirements",
         "",
-        f"## Overview",
+        "## Overview",
         f"{spec.project.description}",
         "",
         "## Functional Requirements",

@@ -1,4 +1,12 @@
-"""Project spec schema — the single authoritative contract for every engine run."""
+"""Project spec schema — the single authoritative contract for every engine run.
+
+Fields in this schema are either:
+- consumed by engine tasks (design, implement, test, verify, extract), or
+- rendered into state/inputs/ documents that feed LLM prompts.
+
+Runtime settings (LLM provider, sandbox, notifications) live in ``config.yml``,
+not here.  This schema captures *what to build*, not *how to run the engine*.
+"""
 
 from __future__ import annotations
 
@@ -12,33 +20,6 @@ class Domain(str, Enum):
     DATA = "data"
     ML = "ml"
     INFRA = "infra"
-
-
-class AutonomyLevel(str, Enum):
-    FULL = "full"
-    GATED = "gated"
-
-
-class DecisionAuthority(str, Enum):
-    HUMAN = "human"
-    ENGINE = "engine"
-
-
-class LLMProvider(str, Enum):
-    CLAUDE = "claude"
-    OPENAI = "openai"
-
-
-class DeliveryFormat(str, Enum):
-    REPO = "repo"
-    DOCS = "docs"
-    CLI = "cli"
-
-
-class NotificationMethod(str, Enum):
-    SLACK = "slack"
-    EMAIL = "email"
-    NONE = "none"
 
 
 class ProjectInfo(BaseModel):
@@ -58,24 +39,12 @@ class Constraints(BaseModel):
     security: str | None = None
 
 
-class Execution(BaseModel):
-    autonomy_level: AutonomyLevel = AutonomyLevel.GATED
-    decision_authority: DecisionAuthority = DecisionAuthority.HUMAN
-    llm_provider: LLMProvider = LLMProvider.CLAUDE
-
-
 class Outputs(BaseModel):
     expected_artifacts: list[str] = Field(min_length=1, description="At least one expected artifact")
-    delivery_format: DeliveryFormat = DeliveryFormat.REPO
-
-
-class Notifications(BaseModel):
-    enabled: bool = False
-    method: NotificationMethod = NotificationMethod.NONE
 
 
 class ProjectSpec(BaseModel):
-    """Root schema — everything the engine needs to run."""
+    """Root schema — everything the engine needs to know about *what* to build."""
 
     project: ProjectInfo
     requirements: Requirements
@@ -84,9 +53,7 @@ class ProjectSpec(BaseModel):
     acceptance_criteria: list[str] = Field(
         min_length=1, description="At least one acceptance criterion"
     )
-    execution: Execution = Field(default_factory=Execution)
     outputs: Outputs
-    notifications: Notifications = Field(default_factory=Notifications)
 
     @model_validator(mode="after")
     def security_constraints_required_if_security_domain(self) -> ProjectSpec:

@@ -1,20 +1,17 @@
-"""Extract task — parse IMPLEMENTATION.md and write files to a standalone project folder."""
+"""Extract task — load FILE_MANIFEST.json and write files to a standalone project folder."""
 
+import json
 import re
 from pathlib import Path
 
 import yaml
+from pydantic import ValidationError
 from prefect import task
 
-from engine.context import ENGINE_ROOT, get_state_dir
+from engine.context import ENGINE_ROOT
 from engine.state_loader import load_state_file, save_state_file
 from engine.tracer import trace
-
-# Patterns for identifying filenames before code blocks
-_BOLD_FILENAME = re.compile(r'\*\*([a-zA-Z0-9_./\-]+\.[a-zA-Z0-9]+)\*\*')
-_HEADER_FILENAME = re.compile(r'^#{1,4}\s+`?([a-zA-Z0-9_./\-]+\.[a-zA-Z0-9]+)`?\s*$', re.MULTILINE)
-_FENCE_OPEN = re.compile(r'^```[a-zA-Z]*\s*$', re.MULTILINE)
-_FENCE_CLOSE = re.compile(r'^```\s*$', re.MULTILINE)
+from tasks.manifest_schema import FileManifest
 
 
 def _slugify(name: str) -> str:
@@ -25,53 +22,20 @@ def _slugify(name: str) -> str:
     return slug
 
 
-def _parse_code_blocks(markdown: str) -> dict[str, str]:
-    """Extract filename -> content pairs from markdown.
+def _load_and_validate_manifest(raw_json: str) -> FileManifest:
+    """Parse raw JSON string and validate against FileManifest schema.
 
-    Scans for bold filenames (**path/to/file.ext**) and header filenames
-    (### file.ext), then captures the next fenced code block after each match.
+    Converts JSONDecodeError and ValidationError into RuntimeError.
     """
-    files: dict[str, str] = {}
+    try:
+        data = json.loads(raw_json)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"FILE_MANIFEST.json is not valid JSON: {exc}") from exc
 
-    # Collect all filename indicators with their positions
-    indicators: list[tuple[int, str]] = []
-    for m in _BOLD_FILENAME.finditer(markdown):
-        indicators.append((m.end(), m.group(1)))
-    for m in _HEADER_FILENAME.finditer(markdown):
-        indicators.append((m.end(), m.group(1)))
-
-    # Sort by position in the document
-    indicators.sort(key=lambda x: x[0])
-
-    for pos, filename in indicators:
-        # Find the next fence opening after this indicator
-        fence_open = _FENCE_OPEN.search(markdown, pos)
-        if fence_open is None:
-            continue
-
-        # Make sure there isn't another filename indicator between this one
-        # and the fence (which would mean this fence belongs to that later indicator)
-        next_indicator_pos = None
-        for other_pos, _ in indicators:
-            if other_pos > pos:
-                next_indicator_pos = other_pos
-                break
-        if next_indicator_pos is not None and fence_open.start() > next_indicator_pos:
-            continue
-
-        # Find the closing fence
-        fence_close = _FENCE_CLOSE.search(markdown, fence_open.end() + 1)
-        if fence_close is None:
-            continue
-
-        content = markdown[fence_open.end() + 1 : fence_close.start()]
-        # Strip single trailing newline if present
-        if content.endswith('\n'):
-            content = content[:-1]
-
-        files[filename] = content
-
-    return files
+    try:
+        return FileManifest.model_validate(data)
+    except ValidationError as exc:
+        raise RuntimeError(f"FILE_MANIFEST.json failed schema validation: {exc}") from exc
 
 
 def _safe_path(output_dir: Path, filepath: str) -> Path:
@@ -84,7 +48,7 @@ def _safe_path(output_dir: Path, filepath: str) -> Path:
     - Any resolved path not strictly under output_dir
     """
     if not filepath or not filepath.strip():
-        raise ValueError(f"Empty file path")
+        raise ValueError("Empty file path")
 
     raw = Path(filepath)
 
@@ -112,7 +76,7 @@ def _safe_path(output_dir: Path, filepath: str) -> Path:
     return resolved
 
 
-def _build_manifest(extracted_files: dict[str, str], output_dir: Path) -> str:
+def _build_manifest(extracted_files: list[str], output_dir: Path) -> str:
     """Generate a markdown manifest listing all extracted files."""
     lines = [
         "# Extraction Manifest",
@@ -131,9 +95,10 @@ def _build_manifest(extracted_files: dict[str, str], output_dir: Path) -> str:
 
 @task(name="extract")
 def extract_project() -> None:
-    """Parse IMPLEMENTATION.md, extract code blocks, write to project folder."""
-    # Load implementation markdown
-    implementation = load_state_file("implementations/IMPLEMENTATION.md")
+    """Load FILE_MANIFEST.json, validate schema, write files to project folder."""
+    # Load manifest JSON
+    raw_json = load_state_file("implementations/FILE_MANIFEST.json")
+    manifest = _load_and_validate_manifest(raw_json)
 
     # Load project spec to get the project name
     spec_raw = load_state_file("inputs/project_spec.yml")
@@ -144,23 +109,20 @@ def extract_project() -> None:
     # Output directory is a sibling of the engine root
     output_dir = ENGINE_ROOT.parent / slug
 
-    # Parse code blocks
-    extracted = _parse_code_blocks(implementation)
-    if not extracted:
-        raise RuntimeError("No code blocks with filenames found in IMPLEMENTATION.md")
-
     # Write each file (with path safety validation)
-    for filepath, content in extracted.items():
-        dest = _safe_path(output_dir, filepath)
+    written_paths: list[str] = []
+    for entry in manifest.files:
+        dest = _safe_path(output_dir, entry.path)
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(content + "\n")
+        dest.write_text(entry.content + "\n")
+        written_paths.append(entry.path)
 
     # Generate and save manifest
-    manifest = _build_manifest(extracted, output_dir)
-    save_state_file("build/MANIFEST.md", manifest)
+    build_manifest = _build_manifest(written_paths, output_dir)
+    save_state_file("build/MANIFEST.md", build_manifest)
 
     trace(
         task="extract",
-        inputs=["implementations/IMPLEMENTATION.md", "inputs/project_spec.yml"],
-        outputs=["build/MANIFEST.md"] + [f"<external>:{f}" for f in sorted(extracted)],
+        inputs=["implementations/FILE_MANIFEST.json", "inputs/project_spec.yml"],
+        outputs=["build/MANIFEST.md"] + [f"<external>:{f}" for f in sorted(written_paths)],
     )

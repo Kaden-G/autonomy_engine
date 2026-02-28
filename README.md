@@ -1,13 +1,14 @@
-# Autonomy Engine v1.1
+# Autonomy Engine v1.2
 
 A Prefect-based autonomous build engine with human-in-the-loop decision gates.
 
 ## What This Is For
 
-- Automating structured software build workflows (design, implement, test, verify)
+- Automating structured software build workflows (design, implement, test, verify, extract)
 - Providing human oversight at critical decision points via Prefect's pause/resume
 - Maintaining full traceability of every step, prompt, and decision in `TRACE.json`
 - Supporting multiple LLM providers (Claude, OpenAI) behind a unified interface
+- Extracting generated code into a standalone, ready-to-run project folder
 
 ## What This Is NOT For
 
@@ -42,14 +43,22 @@ A Prefect-based autonomous build engine with human-in-the-loop decision gates.
                     ↓
 [bootstrap] ──→ verify inputs, init TRACE.json
                     ↓
-[design]    ──→ state/designs/      ←── may pause at decision gate
+[design]    ──→ state/designs/              ←── may pause at decision gate
                     ↓
 [implement] ──→ state/implementations/
                     ↓
 [test]      ──→ state/tests/
                     ↓
 [verify]    ──→ state/tests/VERIFICATION.md
+                    ↓
+[extract]   ──→ ../<project-name>/          ←── standalone project folder
+                 + state/build/MANIFEST.md
 ```
+
+The **extract** step parses `IMPLEMENTATION.md` for fenced code blocks marked with
+bold filenames (`**path/to/file.ext**`) or header filenames (`### file.ext`), then
+writes each file to a sibling directory named after the project. No LLM call — pure
+regex parsing.
 
 ### Core Principles
 
@@ -129,6 +138,21 @@ The engine will refuse to start if intake has not been completed.
 
 The flow will appear in the Prefect UI at `http://localhost:4200`. If a decision gate triggers, resume from the UI.
 
+After a successful run, the final project files are extracted to a sibling directory:
+
+```
+~/Desktop/
+├── autonomy_engine/      # engine root
+└── my-project/           # extracted project (slugified name from spec)
+    ├── app.py
+    ├── requirements.txt
+    ├── models/
+    │   └── ...
+    └── ...
+```
+
+A manifest of all extracted files is saved to `state/build/MANIFEST.md`.
+
 ### Project directory layout
 
 When using `--project-dir`, the scaffolded directory looks like:
@@ -143,7 +167,7 @@ When using `--project-dir`, the scaffolded directory looks like:
       design.txt, implement.txt, test.txt, verify.txt
   state/
     TRACE.json
-    inputs/ designs/ implementations/ tests/ decisions/
+    inputs/ designs/ implementations/ tests/ decisions/ build/
 ```
 
 Without `--project-dir`, all state and config lives in the engine root (unchanged
@@ -179,5 +203,6 @@ state/              Runtime artifacts (gitignored except .gitkeep)
   implementations/  Generated code
   tests/            Test and verification results
   decisions/        Human decisions recorded from gates
+  build/            Extraction manifest (MANIFEST.md)
   TRACE.json        Traceability spine
 ```

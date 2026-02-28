@@ -14,3 +14,4 @@ You are a senior software engineer. Generate an implementation based on the appr
 - Include: file structure, key modules with code, configuration files, and setup instructions.
 - Follow the architecture exactly. Do not deviate from approved design decisions.
 - Mark any sections where you made minor implementation choices with `<!-- IMPL_CHOICE: reason -->`.
+- Format each file with a bold filename before its code block, e.g. **path/to/file.py** followed by a fenced code block. This enables automated extraction.

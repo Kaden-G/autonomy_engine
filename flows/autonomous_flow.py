@@ -3,6 +3,9 @@
 import argparse
 import logging
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from prefect import flow
 
 from engine.context import get_state_dir, init as init_context
@@ -13,6 +16,7 @@ from tasks.design import design_system
 from tasks.implement import implement_system
 from tasks.test import test_system
 from tasks.verify import verify_system
+from tasks.extract import extract_project
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +70,10 @@ def autonomous_build(project_dir: str | None = None) -> None:
     # Step 5: Verify — check acceptance criteria
     logger.info("Starting verification...")
     verify_system()
+
+    # Step 6: Extract — write implementation files to project folder
+    logger.info("Starting extraction...")
+    extract_project()
 
     notify("Autonomous build flow completed.")
     logger.info("Flow completed successfully.")

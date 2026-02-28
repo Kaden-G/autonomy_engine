@@ -1,24 +1,17 @@
 gates:
-  - name: "Architecture Choice"
-    stage: "design"
-    trigger: "Multiple viable architectures identified"
-    description: >
-      When the design task identifies more than one viable architecture,
-      pause execution and present options to a human reviewer.
-    options_source: "LLM output — parsed from DECISION_REQUIRED: marker"
-
-  - name: "Implementation Approach"
-    stage: "implement"
-    trigger: "Design specifies alternatives"
-    description: >
-      When the approved design leaves implementation strategy open,
-      pause for human selection.
-    options_source: "Design document alternatives section"
-
-  - name: "Test Failure Triage"
-    stage: "test"
-    trigger: "Critical test failures detected"
-    description: >
-      When tests reveal critical failures, pause for human decision
-      on whether to fix and re-run or abort.
-    options_source: "Test results — fail categories"
+  design:
+    policy: "pause"
+    default_option: null
+    description: "Architecture choice when multiple viable approaches identified"
+  implement:
+    policy: "skip"
+    default_option: null
+    description: "Implementation gates supported but no trigger exists yet"
+  test:
+    policy: "skip"
+    default_option: "continue"
+    description: "Triage when test failures detected"
+  verify:
+    policy: "skip"
+    default_option: "accept"
+    description: "Review when verification outputs REJECTED"

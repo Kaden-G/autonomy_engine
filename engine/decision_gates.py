@@ -1,32 +1,81 @@
-"""Decision gate system — centralized pause/resume via Prefect RunInput."""
+"""Decision gate system — run-scoped, validated human approvals.
 
+Decisions are stored as structured JSON records under
+``state/runs/<run_id>/decisions/<gate>.json``.  Each record includes
+the run ID, gate name, stage, allowed options, selected option,
+actor, timestamp, and rationale.  The selected option is validated
+against the allowed list at save time.
+
+Gate *policies* are loaded from ``templates/DECISION_GATES.yml`` and
+control what happens when a ``DecisionRequired`` exception is raised:
+
+- **pause**: block for human input (via ``on_pause`` callback)
+- **auto**: auto-select ``default_option`` (or the first option)
+- **skip**: swallow the exception and continue
+"""
+
+import json
+import logging
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Callable
+
+import yaml
 from prefect import pause_flow_run
 from prefect.input import RunInput
 
-from engine.state_loader import save_state_file
+from engine.context import get_state_dir, get_templates_dir
+from engine.tracer import get_run_id
 
+logger = logging.getLogger(__name__)
+
+
+# ── Exception ────────────────────────────────────────────────────────────────
 
 class DecisionRequired(Exception):
     """Raised by tasks when a human decision is needed before proceeding."""
 
-    def __init__(self, summary: str, options: list[str]):
-        self.summary = summary
+    def __init__(self, gate: str, stage: str, options: list[str]):
+        self.gate = gate
+        self.stage = stage
         self.options = options
-        super().__init__(f"Decision required: {summary} (options: {options})")
+        super().__init__(
+            f"Decision required at {stage}: {gate} (options: {options})"
+        )
 
+
+# ── Prefect UI input schema ─────────────────────────────────────────────────
 
 class DecisionInput(RunInput):
     """Schema for human decision input via Prefect UI."""
 
     choice: str
+    rationale: str = ""
 
 
-def require_decision(summary: str, options: list[str]) -> str:
+# ── Path helpers ─────────────────────────────────────────────────────────────
+
+def _gate_slug(gate: str) -> str:
+    """Normalize a gate name to a filesystem-safe slug."""
+    return gate.lower().replace(" ", "_")[:60]
+
+
+def _decision_path(gate: str) -> Path:
+    """Return the path to a decision record for the active run."""
+    slug = _gate_slug(gate)
+    return get_state_dir() / "runs" / get_run_id() / "decisions" / f"{slug}.json"
+
+
+# ── Core API ─────────────────────────────────────────────────────────────────
+
+def require_decision(gate: str, options: list[str]) -> DecisionInput:
     """Pause the flow and wait for a human decision via Prefect UI.
 
     Only called from flows/autonomous_flow.py — never from tasks directly.
+    Returns a ``DecisionInput`` with ``.choice`` and ``.rationale``.
     """
-    description = f"**{summary}**\n\nOptions:\n"
+    description = f"**{gate}**\n\nOptions:\n"
     for opt in options:
         description += f"- `{opt}`\n"
 
@@ -34,11 +83,166 @@ def require_decision(summary: str, options: list[str]) -> str:
         wait_for_input=DecisionInput,
         timeout=86400,
     )
-    return result.choice
+    return result
 
 
-def save_decision(summary: str, choice: str) -> None:
-    """Persist a decision to state/decisions/ so tasks can read it."""
-    safe_name = summary.lower().replace(" ", "_")[:60]
-    content = f"# Decision: {summary}\n\nChoice: {choice}\n"
-    save_state_file(f"decisions/{safe_name}.md", content)
+def save_decision(
+    gate: str,
+    stage: str,
+    allowed_options: list[str],
+    selected: str,
+    actor: str = "human",
+    rationale: str = "",
+) -> None:
+    """Persist a validated decision record to the active run.
+
+    Raises ``ValueError`` if *selected* is not in *allowed_options*.
+    """
+    if selected not in allowed_options:
+        raise ValueError(
+            f"Invalid choice '{selected}' for gate '{gate}'. "
+            f"Must be one of: {allowed_options}"
+        )
+
+    record = {
+        "run_id": get_run_id(),
+        "gate": gate,
+        "stage": stage,
+        "allowed_options": allowed_options,
+        "selected": selected,
+        "actor": actor,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "rationale": rationale,
+    }
+
+    path = _decision_path(gate)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(record, indent=2) + "\n")
+
+
+def decision_exists(gate: str) -> bool:
+    """Check whether a decision has been recorded for *gate* in the active run."""
+    return _decision_path(gate).exists()
+
+
+def load_decision(gate: str) -> dict:
+    """Load the decision record for *gate* in the active run.
+
+    Raises ``FileNotFoundError`` if no decision exists for this gate/run.
+    """
+    path = _decision_path(gate)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"No decision record for gate '{gate}' in run {get_run_id()}"
+        )
+    return json.loads(path.read_text())
+
+
+# ── Gate policies ────────────────────────────────────────────────────────────
+
+_VALID_POLICIES = {"pause", "auto", "skip"}
+
+_DEFAULT_POLICIES = {
+    "design": "pause",
+    "implement": "skip",
+    "test": "skip",
+    "verify": "skip",
+}
+
+
+@dataclass(frozen=True)
+class GatePolicy:
+    """Immutable policy for a single decision gate."""
+
+    stage: str
+    policy: str
+    default_option: str | None = None
+    description: str = ""
+
+    def __post_init__(self):
+        if self.policy not in _VALID_POLICIES:
+            raise ValueError(
+                f"Invalid gate policy '{self.policy}' for stage '{self.stage}'. "
+                f"Must be one of: {sorted(_VALID_POLICIES)}"
+            )
+
+
+def get_gate_policy(stage: str) -> GatePolicy:
+    """Load the gate policy for *stage* from ``DECISION_GATES.yml``.
+
+    Falls back to built-in defaults if the file is missing, malformed,
+    or does not contain an entry for *stage*.  Never crashes.
+    """
+    default_policy = _DEFAULT_POLICIES.get(stage, "skip")
+
+    try:
+        gates_path = get_templates_dir() / "DECISION_GATES.yml"
+        data = yaml.safe_load(gates_path.read_text())
+        gates = data.get("gates", {})
+        if not isinstance(gates, dict):
+            logger.warning("DECISION_GATES.yml: 'gates' is not a dict, using defaults")
+            return GatePolicy(stage=stage, policy=default_policy)
+
+        if stage not in gates:
+            return GatePolicy(stage=stage, policy=default_policy)
+
+        entry = gates[stage]
+        return GatePolicy(
+            stage=stage,
+            policy=entry.get("policy", default_policy),
+            default_option=entry.get("default_option"),
+            description=entry.get("description", ""),
+        )
+    except Exception:
+        logger.warning(
+            "Failed to load DECISION_GATES.yml for stage '%s', using default policy '%s'",
+            stage,
+            default_policy,
+            exc_info=True,
+        )
+        return GatePolicy(stage=stage, policy=default_policy)
+
+
+def handle_gate(
+    task_fn: Callable[[], None],
+    stage: str,
+    on_pause: Callable[[DecisionRequired], None],
+) -> None:
+    """Run *task_fn* and apply the gate policy if ``DecisionRequired`` is raised.
+
+    - **skip**: swallow the exception, return without re-running.
+    - **auto**: auto-save a decision using ``default_option`` (or the first
+      option if none configured), then re-run the task.
+    - **pause**: delegate to *on_pause* (which handles human interaction),
+      then re-run the task.
+    """
+    try:
+        task_fn()
+        return  # no gate triggered — policy is irrelevant
+    except DecisionRequired as exc:
+        policy = get_gate_policy(stage)
+        logger.info(
+            "DecisionRequired at %s (gate=%s), policy=%s",
+            stage, exc.gate, policy.policy,
+        )
+
+        if policy.policy == "skip":
+            logger.info("Skipping gate '%s' per policy", exc.gate)
+            return
+
+        if policy.policy == "auto":
+            selected = policy.default_option or exc.options[0]
+            logger.info("Auto-selecting '%s' for gate '%s'", selected, exc.gate)
+            save_decision(
+                gate=exc.gate,
+                stage=exc.stage,
+                allowed_options=exc.options,
+                selected=selected,
+                actor="auto-policy",
+            )
+            task_fn()
+            return
+
+        # policy == "pause"
+        on_pause(exc)
+        task_fn()

@@ -9,7 +9,12 @@ load_dotenv()
 from prefect import flow
 
 from engine.context import get_state_dir, init as init_context
-from engine.decision_gates import DecisionRequired, require_decision, save_decision
+from engine.decision_gates import (
+    DecisionRequired,
+    handle_gate,
+    require_decision,
+    save_decision,
+)
 from engine.notifier import notify
 from tasks.bootstrap import bootstrap_project
 from tasks.design import design_system
@@ -57,41 +62,43 @@ def autonomous_build(project_dir: str | None = None) -> None:
 
     # Step 2: Design — LLM generates architecture
     logger.info("Starting design...")
-    _run_with_gate(design_system)
+    handle_gate(design_system, "design", _on_pause)
 
     # Step 3: Implement — LLM generates code from design
     logger.info("Starting implementation...")
-    implement_system()
+    handle_gate(implement_system, "implement", _on_pause)
 
-    # Step 4: Test — validate implementation
-    logger.info("Starting tests...")
-    test_system()
-
-    # Step 5: Verify — check acceptance criteria
-    logger.info("Starting verification...")
-    verify_system()
-
-    # Step 6: Extract — write implementation files to project folder
+    # Step 4: Extract — write implementation files to project folder
     logger.info("Starting extraction...")
     extract_project()
+
+    # Step 5: Test — run approved checks against extracted project
+    logger.info("Starting tests...")
+    handle_gate(test_system, "test", _on_pause)
+
+    # Step 6: Verify — LLM assesses execution evidence
+    logger.info("Starting verification...")
+    handle_gate(verify_system, "verify", _on_pause)
 
     notify("Autonomous build flow completed.")
     logger.info("Flow completed successfully.")
 
 
-def _run_with_gate(task_fn) -> None:
-    """Run a task, catch DecisionRequired, pause for human input, then re-run."""
-    try:
-        task_fn()
-    except DecisionRequired as e:
-        logger.info("Decision required: %s (options: %s)", e.summary, e.options)
-        notify(f"Decision required: {e.summary}")
+def _on_pause(exc: DecisionRequired) -> None:
+    """Handle a pause-policy gate: notify, collect human input, save decision."""
+    logger.info("Decision required: %s at %s (options: %s)", exc.gate, exc.stage, exc.options)
+    notify(f"Decision required: {exc.gate}")
 
-        choice = require_decision(e.summary, e.options)
-        logger.info("Decision received: %s -> %s", e.summary, choice)
+    decision_input = require_decision(exc.gate, exc.options)
+    logger.info("Decision received: %s -> %s", exc.gate, decision_input.choice)
 
-        save_decision(e.summary, choice)
-        task_fn()  # Re-run with decision now available in state/decisions/
+    save_decision(
+        gate=exc.gate,
+        stage=exc.stage,
+        allowed_options=exc.options,
+        selected=decision_input.choice,
+        rationale=decision_input.rationale,
+    )
 
 
 if __name__ == "__main__":

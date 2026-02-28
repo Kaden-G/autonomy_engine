@@ -74,6 +74,44 @@ def _parse_code_blocks(markdown: str) -> dict[str, str]:
     return files
 
 
+def _safe_path(output_dir: Path, filepath: str) -> Path:
+    """Resolve *filepath* under *output_dir*, rejecting anything that escapes it.
+
+    Rejects:
+    - Absolute paths (/tmp/x)
+    - Parent traversal (../../x)
+    - Empty or whitespace-only segments
+    - Any resolved path not strictly under output_dir
+    """
+    if not filepath or not filepath.strip():
+        raise ValueError(f"Empty file path")
+
+    raw = Path(filepath)
+
+    # Reject absolute paths
+    if raw.is_absolute():
+        raise ValueError(f"Absolute path not allowed: {filepath}")
+
+    # Reject .. components
+    if ".." in raw.parts:
+        raise ValueError(f"Parent traversal not allowed: {filepath}")
+
+    # Reject empty segments (e.g. "src//file.py" → ('src', '', 'file.py'))
+    for part in raw.parts:
+        if not part or not part.strip():
+            raise ValueError(f"Empty path segment in: {filepath}")
+
+    resolved = (output_dir / raw).resolve()
+
+    # Final containment check — resolved path must be inside the output dir
+    if not resolved.is_relative_to(output_dir.resolve()):
+        raise ValueError(
+            f"Path escapes output directory: {filepath} -> {resolved}"
+        )
+
+    return resolved
+
+
 def _build_manifest(extracted_files: dict[str, str], output_dir: Path) -> str:
     """Generate a markdown manifest listing all extracted files."""
     lines = [
@@ -111,9 +149,9 @@ def extract_project() -> None:
     if not extracted:
         raise RuntimeError("No code blocks with filenames found in IMPLEMENTATION.md")
 
-    # Write each file
+    # Write each file (with path safety validation)
     for filepath, content in extracted.items():
-        dest = output_dir / filepath
+        dest = _safe_path(output_dir, filepath)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(content + "\n")
 

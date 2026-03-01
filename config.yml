@@ -21,6 +21,16 @@ sandbox:
   enabled: true        # run checks in an isolated copy (default: true)
   install_deps: true   # install requirements.txt / pyproject.toml in the sandbox
 
+# Verify stage mode:
+#   always_llm  — always call the LLM for verification (default, original behavior)
+#   auto        — skip LLM when evidence makes outcome obvious
+#   never_llm   — always write deterministic VERIFICATION.md, never call LLM
+# llm_on_fail_summary / llm_on_pass_summary only apply in auto mode.
+verify:
+  mode: always_llm
+  llm_on_fail_summary: true
+  llm_on_pass_summary: true
+
 # Approved commands for the test stage.
 # Only commands listed here will be executed — the LLM cannot invent its own.
 # Each entry needs: name (identifier) and command (shell command).

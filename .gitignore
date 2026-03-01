@@ -8,6 +8,7 @@ state/build/*
 state/runs/*
 state/TRACE.json
 state/cache/
+state/sandbox_cache/
 !state/**/.gitkeep
 
 # Generated project artifacts

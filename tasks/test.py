@@ -126,11 +126,11 @@ def _build_test_summary(evidence: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _run_checks_sandboxed(checks: list[dict], project_dir: Path, sandbox_cfg: dict) -> None:
-    """Run all checks inside an isolated sandbox."""
+def _run_checks_sandboxed(checks: list[dict], project_dir: Path, sandbox_cfg: dict) -> dict:
+    """Run all checks inside an isolated sandbox. Returns sandbox metadata."""
     install = sandbox_cfg.get("install_deps", True)
 
-    with create_sandbox(project_dir, install_deps=install) as sb:
+    with create_sandbox(project_dir, install_deps=install, sandbox_cfg=sandbox_cfg) as sb:
         env_meta = sb.metadata()
         for check in checks:
             record = run_check(
@@ -141,6 +141,7 @@ def _run_checks_sandboxed(checks: list[dict], project_dir: Path, sandbox_cfg: di
             )
             record["environment"] = env_meta
             save_evidence(record)
+        return env_meta
 
 
 def _run_checks_direct(checks: list[dict], project_dir: Path) -> None:
@@ -177,6 +178,7 @@ def test_system() -> None:
     checks = load_configured_checks()
     run_id = get_run_id()
 
+    sandbox_meta: dict = {}
     if not checks:
         save_evidence(no_checks_record())
     else:
@@ -185,7 +187,7 @@ def test_system() -> None:
         use_sandbox = sandbox_cfg.get("enabled", True)
 
         if use_sandbox:
-            _run_checks_sandboxed(checks, project_dir, sandbox_cfg)
+            sandbox_meta = _run_checks_sandboxed(checks, project_dir, sandbox_cfg)
         else:
             _run_checks_direct(checks, project_dir)
 
@@ -200,6 +202,13 @@ def test_system() -> None:
         task="test",
         inputs=["implementations/IMPLEMENTATION.md"],
         outputs=[output_path] + evidence_rel,
+        extra={
+            "sandbox_venv_cache_hit": sandbox_meta.get("venv_cache_hit"),
+            "sandbox_venv_create_time_s": sandbox_meta.get("venv_create_time_s"),
+            "sandbox_deps_install_time_s": sandbox_meta.get("deps_install_time_s"),
+        }
+        if sandbox_meta
+        else None,
     )
 
     # Gate trigger: raise if failures detected and no decision recorded yet

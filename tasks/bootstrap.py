@@ -35,8 +35,16 @@ def bootstrap_project() -> None:
         (run_dir / subdir).mkdir(parents=True, exist_ok=True)
 
     present = [f for f in REQUIRED_FILES if (state_dir / f).exists()]
+
+    # Include config snapshot in outputs if it was created by init_run()
+    run_dir = state_dir / "runs" / run_id
+    outputs = []
+    config_snapshot = run_dir / "config_snapshot.yml"
+    if config_snapshot.exists():
+        outputs.append(str(config_snapshot.relative_to(state_dir)))
+
     trace(
         task="bootstrap",
         inputs=present,
-        outputs=[],
+        outputs=outputs,
     )

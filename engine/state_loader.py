@@ -16,5 +16,3 @@ def save_state_file(name: str, content: str) -> None:
     path = get_state_dir() / name
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)
-
-

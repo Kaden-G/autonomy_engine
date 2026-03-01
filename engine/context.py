@@ -37,6 +37,12 @@ def _ensure_init() -> Path:
 
 # ── Path accessors ───────────────────────────────────────────────────────────
 
+
+def get_project_dir() -> Path:
+    """Return the active project directory (set via ``init()``)."""
+    return _ensure_init()
+
+
 def get_state_dir() -> Path:
     """Return ``<project_dir>/state``."""
     return _ensure_init() / "state"

@@ -1,0 +1,52 @@
+You are a software project architect. Given the project seed below, generate a complete project specification.
+
+## Project Seed
+- **Name:** {name}
+- **Description:** {description}
+- **Domain:** {domain}
+
+## Instructions
+Generate values for every field listed below. Be specific and actionable:
+- Functional requirements should describe concrete behaviors, not vague goals.
+- Acceptance criteria must be testable (a human or script can verify pass/fail).
+- Tech stack should be appropriate for the domain and description.
+- Non-goals help scope the project — list things someone might assume are included but aren't.
+
+Return EXACTLY one YAML block fenced with ```yaml and ```. Use these keys:
+
+```yaml
+functional:
+  - "requirement 1"
+  - "requirement 2"
+non_functional:
+  - "requirement 1"
+tech_stack:
+  - "technology 1"
+performance: "performance constraint or null"
+security: "security constraint or null"
+non_goals:
+  - "non-goal 1"
+acceptance:
+  - "testable criterion 1"
+  - "testable criterion 2"
+autonomy: "gated"
+authority: "human"
+provider: "claude"
+artifacts:
+  - "artifact 1"
+delivery: "repo"
+enabled: false
+method: "none"
+```
+
+Rules:
+- `functional` must have at least 1 item.
+- `acceptance` must have at least 1 item and each must be verifiable.
+- `artifacts` must have at least 1 item.
+- `autonomy` must be "full" or "gated".
+- `authority` must be "human" or "engine".
+- `provider` must be "claude" or "openai".
+- `delivery` must be "repo", "docs", or "cli".
+- `enabled` must be false.
+- `method` must be "none".
+- Output ONLY the YAML block. No commentary before or after.

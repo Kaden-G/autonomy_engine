@@ -33,8 +33,15 @@ class TestTestSystemGate:
     def _make_evidence(self, exit_codes):
         """Build minimal evidence records with given exit codes."""
         return [
-            {"name": f"check_{i}", "exit_code": ec, "command": "cmd",
-             "started_at": "t", "finished_at": "t", "stdout": "", "stderr": ""}
+            {
+                "name": f"check_{i}",
+                "exit_code": ec,
+                "command": "cmd",
+                "started_at": "t",
+                "finished_at": "t",
+                "stdout": "",
+                "stderr": "",
+            }
             for i, ec in enumerate(exit_codes)
         ]
 
@@ -43,8 +50,9 @@ class TestTestSystemGate:
     @patch("tasks.test.load_all_evidence")
     @patch("tasks.test.save_evidence")
     @patch("tasks.test.load_configured_checks")
-    def test_raises_on_failure(self, mock_checks, mock_save_ev, mock_load_ev,
-                                mock_save_state, mock_trace):
+    def test_raises_on_failure(
+        self, mock_checks, mock_save_ev, mock_load_ev, mock_save_state, mock_trace
+    ):
         """When checks fail and no decision exists, DecisionRequired is raised."""
         init_run()
         mock_checks.return_value = []  # no checks to run
@@ -53,6 +61,7 @@ class TestTestSystemGate:
         mock_load_ev.return_value = evidence
 
         from tasks.test import test_system
+
         with pytest.raises(DecisionRequired, match="test_failure_triage"):
             test_system.fn()
 
@@ -61,8 +70,9 @@ class TestTestSystemGate:
     @patch("tasks.test.load_all_evidence")
     @patch("tasks.test.save_evidence")
     @patch("tasks.test.load_configured_checks")
-    def test_no_raise_when_all_pass(self, mock_checks, mock_save_ev, mock_load_ev,
-                                     mock_save_state, mock_trace):
+    def test_no_raise_when_all_pass(
+        self, mock_checks, mock_save_ev, mock_load_ev, mock_save_state, mock_trace
+    ):
         """When all checks pass, no exception is raised."""
         init_run()
         mock_checks.return_value = []
@@ -71,6 +81,7 @@ class TestTestSystemGate:
         mock_load_ev.return_value = evidence
 
         from tasks.test import test_system
+
         test_system.fn()  # should not raise
 
     @patch("tasks.test.trace")
@@ -78,8 +89,9 @@ class TestTestSystemGate:
     @patch("tasks.test.load_all_evidence")
     @patch("tasks.test.save_evidence")
     @patch("tasks.test.load_configured_checks")
-    def test_no_raise_when_decision_exists(self, mock_checks, mock_save_ev,
-                                            mock_load_ev, mock_save_state, mock_trace):
+    def test_no_raise_when_decision_exists(
+        self, mock_checks, mock_save_ev, mock_load_ev, mock_save_state, mock_trace
+    ):
         """When a continue decision already exists, the task runs without raising."""
         init_run()
         save_decision("test_failure_triage", "test", ["continue", "abort"], "continue")
@@ -89,6 +101,7 @@ class TestTestSystemGate:
         mock_load_ev.return_value = evidence
 
         from tasks.test import test_system
+
         test_system.fn()  # should not raise — decision exists
 
     def test_abort_decision_raises_runtime_error(self):
@@ -97,6 +110,7 @@ class TestTestSystemGate:
         save_decision("test_failure_triage", "test", ["continue", "abort"], "abort")
 
         from tasks.test import test_system
+
         with pytest.raises(RuntimeError, match="abort"):
             test_system.fn()
 
@@ -115,9 +129,18 @@ class TestVerifySystemGate:
     @patch("tasks.verify.format_evidence_for_llm", return_value="evidence text")
     @patch("tasks.verify.load_all_evidence", return_value=[])
     @patch("tasks.verify.get_prompts_dir")
-    def test_raises_on_rejected(self, mock_prompts, mock_load_ev, mock_fmt,
-                                 mock_load_state, mock_provider, mock_hash,
-                                 mock_save_state, mock_trace, tmp_path):
+    def test_raises_on_rejected(
+        self,
+        mock_prompts,
+        mock_load_ev,
+        mock_fmt,
+        mock_load_state,
+        mock_provider,
+        mock_hash,
+        mock_save_state,
+        mock_trace,
+        tmp_path,
+    ):
         """When LLM output contains REJECTED, DecisionRequired is raised."""
         init_run()
         # Set up prompt template
@@ -133,6 +156,7 @@ class TestVerifySystemGate:
         mock_provider.return_value = provider
 
         from tasks.verify import verify_system
+
         with pytest.raises(DecisionRequired, match="verification_review"):
             verify_system.fn()
 
@@ -144,9 +168,18 @@ class TestVerifySystemGate:
     @patch("tasks.verify.format_evidence_for_llm", return_value="evidence text")
     @patch("tasks.verify.load_all_evidence", return_value=[])
     @patch("tasks.verify.get_prompts_dir")
-    def test_no_raise_on_approved(self, mock_prompts, mock_load_ev, mock_fmt,
-                                   mock_load_state, mock_provider, mock_hash,
-                                   mock_save_state, mock_trace, tmp_path):
+    def test_no_raise_on_approved(
+        self,
+        mock_prompts,
+        mock_load_ev,
+        mock_fmt,
+        mock_load_state,
+        mock_provider,
+        mock_hash,
+        mock_save_state,
+        mock_trace,
+        tmp_path,
+    ):
         """When LLM output contains APPROVED (not REJECTED), no exception."""
         init_run()
         prompts_dir = tmp_path / "prompts"
@@ -161,6 +194,7 @@ class TestVerifySystemGate:
         mock_provider.return_value = provider
 
         from tasks.verify import verify_system
+
         verify_system.fn()  # should not raise
 
     @patch("tasks.verify.trace")
@@ -171,10 +205,18 @@ class TestVerifySystemGate:
     @patch("tasks.verify.format_evidence_for_llm", return_value="evidence text")
     @patch("tasks.verify.load_all_evidence", return_value=[])
     @patch("tasks.verify.get_prompts_dir")
-    def test_no_raise_on_approved_with_caveats(self, mock_prompts, mock_load_ev,
-                                                mock_fmt, mock_load_state,
-                                                mock_provider, mock_hash,
-                                                mock_save_state, mock_trace, tmp_path):
+    def test_no_raise_on_approved_with_caveats(
+        self,
+        mock_prompts,
+        mock_load_ev,
+        mock_fmt,
+        mock_load_state,
+        mock_provider,
+        mock_hash,
+        mock_save_state,
+        mock_trace,
+        tmp_path,
+    ):
         """APPROVED_WITH_CAVEATS does not contain 'REJECTED' so no exception."""
         init_run()
         prompts_dir = tmp_path / "prompts"
@@ -189,6 +231,7 @@ class TestVerifySystemGate:
         mock_provider.return_value = provider
 
         from tasks.verify import verify_system
+
         verify_system.fn()  # should not raise
 
     def test_reject_decision_raises_runtime_error(self):
@@ -197,5 +240,6 @@ class TestVerifySystemGate:
         save_decision("verification_review", "verify", ["accept", "reject"], "reject")
 
         from tasks.verify import verify_system
+
         with pytest.raises(RuntimeError, match="reject"):
             verify_system.fn()

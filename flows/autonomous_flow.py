@@ -4,6 +4,7 @@ import argparse
 import logging
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from prefect import flow

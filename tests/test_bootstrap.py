@@ -160,11 +160,23 @@ class TestBootstrapTrace:
         for f in REQUIRED_FILES:
             assert f in entry["inputs"]
 
-    def test_bootstrap_outputs_empty(self, tmp_path):
-        """Bootstrap trace outputs should be empty (no TRACE.json reference)."""
+    def test_bootstrap_outputs_empty_without_config(self, tmp_path):
+        """Bootstrap trace outputs should be empty when no config.yml exists."""
         _create_intake_artifacts(tmp_path)
         run_id = init_run()
         bootstrap_project.fn()
         trace_file = tmp_path / "state" / "runs" / run_id / "trace.jsonl"
         entry = json.loads(trace_file.read_text().strip())
         assert entry["outputs"] == {}
+
+    def test_bootstrap_outputs_include_config_snapshot(self, tmp_path):
+        """Bootstrap trace outputs include config_snapshot.yml when config exists."""
+        _create_intake_artifacts(tmp_path)
+        (tmp_path / "config.yml").write_text("llm:\n  provider: test\n")
+        run_id = init_run()
+        bootstrap_project.fn()
+        trace_file = tmp_path / "state" / "runs" / run_id / "trace.jsonl"
+        entry = json.loads(trace_file.read_text().strip())
+        output_keys = list(entry["outputs"].keys())
+        assert len(output_keys) == 1
+        assert f"runs/{run_id}/config_snapshot.yml" in output_keys[0]

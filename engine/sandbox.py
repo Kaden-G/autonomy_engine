@@ -22,6 +22,7 @@ from engine.context import get_config_path
 
 # ── Config ───────────────────────────────────────────────────────────────────
 
+
 def load_sandbox_config() -> dict:
     """Load the ``sandbox`` section from ``config.yml``.
 
@@ -37,6 +38,7 @@ def load_sandbox_config() -> dict:
 
 # ── Host metadata (non-sandboxed fallback) ───────────────────────────────────
 
+
 def collect_host_metadata() -> dict:
     """Return environment metadata for evidence when running without a sandbox."""
     return {
@@ -47,6 +49,7 @@ def collect_host_metadata() -> dict:
 
 
 # ── Sandbox class ────────────────────────────────────────────────────────────
+
 
 class Sandbox:
     """An isolated workspace with its own virtualenv.
@@ -89,6 +92,7 @@ class Sandbox:
 
 
 # ── Internal helpers ─────────────────────────────────────────────────────────
+
 
 def _create_venv(workspace: Path) -> Path | None:
     """Create a virtualenv at ``<workspace>/.venv``.
@@ -142,6 +146,7 @@ def _install_deps(workspace: Path, venv_path: Path) -> bool:
 
 
 # ── Context manager ──────────────────────────────────────────────────────────
+
 
 @contextmanager
 def create_sandbox(

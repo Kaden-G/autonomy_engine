@@ -8,11 +8,12 @@ forming a tamper-evident chain.
 
 import hashlib
 import json
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from engine.context import get_state_dir
+from engine.context import get_config_path, get_state_dir
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -26,13 +27,22 @@ _seq: int = 0
 
 
 def init_run() -> str:
-    """Start a new run — create ``state/runs/<run_id>/`` and reset chain state."""
+    """Start a new run — create ``state/runs/<run_id>/`` and reset chain state.
+
+    Also snapshots ``config.yml`` into the run directory for reproducibility.
+    """
     global _run_id, _prev_hash, _seq
     _run_id = uuid4().hex[:12]
     _prev_hash = GENESIS_HASH
     _seq = 0
     run_dir = get_state_dir() / "runs" / _run_id
     run_dir.mkdir(parents=True, exist_ok=True)
+
+    # Snapshot runtime config for reproducibility
+    config_path = get_config_path()
+    if config_path.exists():
+        shutil.copy2(config_path, run_dir / "config_snapshot.yml")
+
     return _run_id
 
 
@@ -45,6 +55,7 @@ def get_run_id() -> str:
 
 # ── Trace path ───────────────────────────────────────────────────────────────
 
+
 def _trace_path() -> Path:
     """Return the path to ``trace.jsonl`` for the active run."""
     return get_state_dir() / "runs" / get_run_id() / "trace.jsonl"
@@ -52,17 +63,27 @@ def _trace_path() -> Path:
 
 # ── Hashing helpers ──────────────────────────────────────────────────────────
 
+
 def hash_prompt(prompt_text: str) -> str:
-    """Return a truncated SHA-256 hash of a prompt string for traceability."""
-    return hashlib.sha256(prompt_text.encode()).hexdigest()[:16]
+    """Return the full SHA-256 hash of a prompt string for traceability."""
+    return hashlib.sha256(prompt_text.encode()).hexdigest()
 
 
-def _hash_artifact(rel_path: str) -> str | None:
-    """Compute SHA-256 of a state file.  Returns ``None`` for external or missing files."""
+def _hash_artifact(rel_path: str, external_base: Path | None = None) -> str | None:
+    """Compute SHA-256 of an artifact file.
+
+    State-relative paths are resolved under ``get_state_dir()``.
+    ``<external>:`` paths are resolved under *external_base* if provided.
+    Returns ``None`` for missing files or unresolvable external paths.
+    """
     if rel_path.startswith("<external>:"):
-        return None
-    try:
+        if external_base is None:
+            return None
+        suffix = rel_path[len("<external>:") :]
+        full = external_base / suffix
+    else:
         full = get_state_dir() / rel_path
+    try:
         return hashlib.sha256(full.read_bytes()).hexdigest()
     except (OSError, FileNotFoundError):
         return None
@@ -76,6 +97,7 @@ def _compute_entry_hash(entry: dict) -> str:
 
 # ── Core trace function ─────────────────────────────────────────────────────
 
+
 def trace(
     task: str,
     inputs: list[str],
@@ -84,12 +106,19 @@ def trace(
     prompt_hash: str | None = None,
     provider: str | None = None,
     max_tokens: int | None = None,
+    external_base: Path | None = None,
+    extra: dict | None = None,
 ) -> None:
-    """Append a hash-chained trace entry to the active run's ``trace.jsonl``."""
+    """Append a hash-chained trace entry to the active run's ``trace.jsonl``.
+
+    *external_base* is passed to ``_hash_artifact`` so ``<external>:`` paths
+    can be resolved and hashed.  *extra* is an optional dict merged into the
+    entry for structured metadata (e.g. decision details).
+    """
     global _prev_hash, _seq
 
-    input_hashes = {p: _hash_artifact(p) for p in inputs}
-    output_hashes = {p: _hash_artifact(p) for p in outputs}
+    input_hashes = {p: _hash_artifact(p, external_base) for p in inputs}
+    output_hashes = {p: _hash_artifact(p, external_base) for p in outputs}
 
     entry = {
         "seq": _seq,
@@ -103,6 +132,8 @@ def trace(
         "max_tokens": max_tokens,
         "prev_hash": _prev_hash,
     }
+    if extra:
+        entry["extra"] = extra
 
     entry_hash = _compute_entry_hash(entry)
     entry["entry_hash"] = entry_hash
@@ -115,6 +146,7 @@ def trace(
 
 
 # ── Integrity verification ──────────────────────────────────────────────────
+
 
 def verify_trace_integrity(run_id: str | None = None) -> tuple[bool, list[str]]:
     """Replay the hash chain and report any breaks.

@@ -72,10 +72,13 @@ class TestSandboxLifecycle:
 
 class TestFileIsolation:
     def test_project_files_copied(self, tmp_path):
-        project = _make_project(tmp_path, {
-            "app.py": "print('hello')",
-            "src/lib.py": "x = 42",
-        })
+        project = _make_project(
+            tmp_path,
+            {
+                "app.py": "print('hello')",
+                "src/lib.py": "x = 42",
+            },
+        )
         with create_sandbox(project, install_deps=False) as sb:
             assert (sb.workspace / "app.py").read_text() == "print('hello')"
             assert (sb.workspace / "src" / "lib.py").read_text() == "x = 42"
@@ -121,7 +124,8 @@ class TestVenvCreation:
         with create_sandbox(project, install_deps=False) as sb:
             result = subprocess.run(
                 [str(sb.venv_path / "bin" / "python"), "-c", "print('ok')"],
-                capture_output=True, text=True,
+                capture_output=True,
+                text=True,
             )
             assert result.returncode == 0
             assert "ok" in result.stdout
@@ -147,9 +151,12 @@ class TestVenvCreation:
 
 class TestDepsInstallation:
     def test_deps_installed_from_requirements_txt(self, tmp_path):
-        project = _make_project(tmp_path, {
-            "requirements.txt": "pip-install-test==0.5\n",
-        })
+        project = _make_project(
+            tmp_path,
+            {
+                "requirements.txt": "pip-install-test==0.5\n",
+            },
+        )
         with create_sandbox(project, install_deps=True) as sb:
             assert sb._deps_installed is True
 
@@ -159,9 +166,12 @@ class TestDepsInstallation:
             assert sb._deps_installed is False
 
     def test_install_deps_false_skips(self, tmp_path):
-        project = _make_project(tmp_path, {
-            "requirements.txt": "pip-install-test==0.5\n",
-        })
+        project = _make_project(
+            tmp_path,
+            {
+                "requirements.txt": "pip-install-test==0.5\n",
+            },
+        )
         with create_sandbox(project, install_deps=False) as sb:
             assert sb._deps_installed is False
 
@@ -206,9 +216,7 @@ class TestLoadSandboxConfig:
         assert load_sandbox_config() == {}
 
     def test_returns_config(self, tmp_path):
-        (tmp_path / "config.yml").write_text(
-            "sandbox:\n  enabled: false\n  install_deps: false\n"
-        )
+        (tmp_path / "config.yml").write_text("sandbox:\n  enabled: false\n  install_deps: false\n")
         cfg = load_sandbox_config()
         assert cfg["enabled"] is False
         assert cfg["install_deps"] is False
@@ -227,7 +235,10 @@ class TestRunCheckWithSandboxEnv:
         project = _make_project(tmp_path, {"app.py": "print('hello')"})
         with create_sandbox(project, install_deps=False) as sb:
             record = run_check(
-                "run_app", "python app.py", cwd=sb.workspace, env=sb.env,
+                "run_app",
+                "python app.py",
+                cwd=sb.workspace,
+                env=sb.env,
             )
             assert record["exit_code"] == 0
             assert "hello" in record["stdout"]

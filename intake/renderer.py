@@ -19,7 +19,9 @@ def render_all(spec: ProjectSpec) -> list[str]:
     written.append(_write(inputs_dir / "REQUIREMENTS.md", _render_requirements(spec), state_dir))
     written.append(_write(inputs_dir / "CONSTRAINTS.md", _render_constraints(spec), state_dir))
     written.append(_write(inputs_dir / "NON_GOALS.md", _render_non_goals(spec), state_dir))
-    written.append(_write(inputs_dir / "ACCEPTANCE_CRITERIA.md", _render_acceptance(spec), state_dir))
+    written.append(
+        _write(inputs_dir / "ACCEPTANCE_CRITERIA.md", _render_acceptance(spec), state_dir)
+    )
     written.append(_write(inputs_dir / "project_spec.yml", _render_spec_yaml(spec), state_dir))
 
     return written

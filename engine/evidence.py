@@ -6,6 +6,7 @@ The LLM never controls which shell commands run.
 
 import hashlib
 import json
+import shlex
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +19,7 @@ from engine.tracer import get_run_id
 
 # ── Evidence directory ───────────────────────────────────────────────────────
 
+
 def _evidence_dir() -> Path:
     """Return ``state/runs/<run_id>/evidence/``, creating if needed."""
     d = get_state_dir() / "runs" / get_run_id() / "evidence"
@@ -26,6 +28,7 @@ def _evidence_dir() -> Path:
 
 
 # ── Config loading ───────────────────────────────────────────────────────────
+
 
 def load_configured_checks() -> list[dict]:
     """Load the ``checks`` list from ``config.yml``.
@@ -45,6 +48,7 @@ def load_configured_checks() -> list[dict]:
 
 
 # ── Command execution ────────────────────────────────────────────────────────
+
 
 def run_check(
     name: str,
@@ -81,7 +85,11 @@ def run_check(
         stdout = result.stdout
         stderr = result.stderr
     except subprocess.TimeoutExpired as exc:
-        stdout = (exc.stdout or b"").decode(errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        stdout = (
+            (exc.stdout or b"").decode(errors="replace")
+            if isinstance(exc.stdout, bytes)
+            else (exc.stdout or "")
+        )
         stderr = f"Command timed out after {timeout} seconds: {command}"
     except OSError as exc:
         stderr = f"Failed to execute command: {exc}"
@@ -91,6 +99,7 @@ def run_check(
     return {
         "name": name,
         "command": command,
+        "argv": shlex.split(command),
         "cwd": str(cwd),
         "started_at": started_at,
         "finished_at": finished_at,
@@ -122,6 +131,7 @@ def no_checks_record() -> dict:
 
 # ── Evidence storage ─────────────────────────────────────────────────────────
 
+
 def save_evidence(record: dict) -> Path:
     """Write an evidence record to the active run's evidence directory."""
     path = _evidence_dir() / f"{record['name']}.json"
@@ -140,6 +150,7 @@ def load_all_evidence() -> list[dict]:
 
 # ── Formatting for LLM / human consumption ──────────────────────────────────
 
+
 def format_evidence_for_llm(records: list[dict]) -> str:
     """Format evidence records into structured text for LLM consumption."""
     if not records:
@@ -156,7 +167,9 @@ def format_evidence_for_llm(records: list[dict]) -> str:
             if env.get("platform"):
                 parts.append(f"- **Platform:** {env['platform']}")
             if env.get("deps_installed") is not None:
-                parts.append(f"- **Dependencies installed:** {'yes' if env['deps_installed'] else 'no'}")
+                parts.append(
+                    f"- **Dependencies installed:** {'yes' if env['deps_installed'] else 'no'}"
+                )
             env_header = "## Execution Environment\n" + "\n".join(parts) + "\n\n"
             break
 

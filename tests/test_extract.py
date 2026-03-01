@@ -101,10 +101,12 @@ class TestValidManifest:
         assert result.files[0].content == "print('hi')"
 
     def test_multiple_files(self):
-        raw = self._manifest_json([
-            {"path": "a.py", "content": "# a"},
-            {"path": "b.py", "content": "# b"},
-        ])
+        raw = self._manifest_json(
+            [
+                {"path": "a.py", "content": "# a"},
+                {"path": "b.py", "content": "# b"},
+            ]
+        )
         result = _load_and_validate_manifest(raw)
         assert len(result.files) == 2
 

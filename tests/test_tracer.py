@@ -137,11 +137,43 @@ class TestTraceAppend:
         assert h is not None
         assert len(h) == 64
 
-    def test_external_paths_hash_to_none(self, tmp_path):
+    def test_external_paths_hash_to_none_without_base(self, tmp_path):
+        """External paths without external_base still hash to None."""
         init_run()
         trace(task="t", inputs=[], outputs=["<external>:app.py"])
         entries = _read_entries(tmp_path)
         assert entries[0]["outputs"]["<external>:app.py"] is None
+
+    def test_external_paths_hashed_with_base(self, tmp_path):
+        """External paths are hashed when external_base is provided."""
+        init_run()
+        ext_dir = tmp_path / "project"
+        ext_dir.mkdir()
+        (ext_dir / "app.py").write_text("print('hello')")
+        trace(
+            task="t",
+            inputs=[],
+            outputs=["<external>:app.py"],
+            external_base=ext_dir,
+        )
+        entries = _read_entries(tmp_path)
+        h = entries[0]["outputs"]["<external>:app.py"]
+        assert h is not None
+        assert len(h) == 64
+
+    def test_external_missing_file_hashes_to_none_with_base(self, tmp_path):
+        """External paths for missing files still return None even with base."""
+        init_run()
+        ext_dir = tmp_path / "project"
+        ext_dir.mkdir()
+        trace(
+            task="t",
+            inputs=[],
+            outputs=["<external>:missing.py"],
+            external_base=ext_dir,
+        )
+        entries = _read_entries(tmp_path)
+        assert entries[0]["outputs"]["<external>:missing.py"] is None
 
     def test_missing_file_hashes_to_none(self, tmp_path):
         init_run()
@@ -162,6 +194,53 @@ class TestTraceAppend:
         entries = _read_entries(tmp_path)
         assert entries[0]["model"] is None
         assert entries[0]["prompt_hash"] is None
+
+    def test_extra_field_included_when_provided(self, tmp_path):
+        init_run()
+        trace(
+            task="t",
+            inputs=[],
+            outputs=[],
+            extra={"gate": "arch", "selected": "A"},
+        )
+        entries = _read_entries(tmp_path)
+        assert entries[0]["extra"] == {"gate": "arch", "selected": "A"}
+
+    def test_extra_field_absent_when_not_provided(self, tmp_path):
+        init_run()
+        trace(task="t", inputs=[], outputs=[])
+        entries = _read_entries(tmp_path)
+        assert "extra" not in entries[0]
+
+
+# ── Config snapshot ──────────────────────────────────────────────────────
+
+
+class TestConfigSnapshot:
+    def test_init_run_copies_config_to_run_dir(self, tmp_path):
+        (tmp_path / "config.yml").write_text("llm:\n  provider: test\n")
+        run_id = init_run()
+        snapshot = tmp_path / "state" / "runs" / run_id / "config_snapshot.yml"
+        assert snapshot.exists()
+        assert "provider: test" in snapshot.read_text()
+
+    def test_init_run_no_config_no_snapshot(self, tmp_path):
+        """If config.yml doesn't exist, no snapshot is created."""
+        run_id = init_run()
+        snapshot = tmp_path / "state" / "runs" / run_id / "config_snapshot.yml"
+        assert not snapshot.exists()
+
+
+# ── Full SHA-256 prompt hashes ────────────────────────────────────────────
+
+
+class TestFullPromptHash:
+    def test_hash_prompt_returns_full_sha256(self):
+        from engine.tracer import hash_prompt
+
+        h = hash_prompt("test prompt")
+        assert len(h) == 64
+        int(h, 16)  # valid hex
 
 
 # ── Integrity verification ───────────────────────────────────────────────────

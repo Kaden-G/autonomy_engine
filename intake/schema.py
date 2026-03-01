@@ -40,7 +40,9 @@ class Constraints(BaseModel):
 
 
 class Outputs(BaseModel):
-    expected_artifacts: list[str] = Field(min_length=1, description="At least one expected artifact")
+    expected_artifacts: list[str] = Field(
+        min_length=1, description="At least one expected artifact"
+    )
 
 
 class ProjectSpec(BaseModel):

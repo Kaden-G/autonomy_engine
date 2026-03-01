@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 import yaml
@@ -41,6 +42,7 @@ SECTIONS = [
 
 
 # ── Prompt helpers ────────────────────────────────────────────────────────────
+
 
 def _prompt(label: str, required: bool = True, default: str = "") -> str:
     suffix = f" [{default}]" if default else ""
@@ -103,6 +105,7 @@ def _prompt_yn(label: str, default: bool = False) -> bool:
 # ── Section collectors ────────────────────────────────────────────────────────
 # Each returns a dict of field values for that section.
 
+
 def _collect_project(current: dict) -> dict:
     print("\n>> Project Info")
     name = _prompt("Name", default=current.get("name", ""))
@@ -110,8 +113,9 @@ def _collect_project(current: dict) -> dict:
     print("    Domain determines validation rules (e.g., infra requires security constraints).")
     print("      software = apps, APIs, CLIs  |  data = pipelines, ETL, analytics")
     print("      ml = models, training, inference  |  infra = cloud, networking, IaC")
-    domain = _prompt_choice("Domain", ["software", "data", "ml", "infra"],
-                            current.get("domain", "software"))
+    domain = _prompt_choice(
+        "Domain", ["software", "data", "ml", "infra"], current.get("domain", "software")
+    )
     return {"name": name, "description": description, "domain": domain}
 
 
@@ -133,11 +137,21 @@ def _collect_constraints(current: dict) -> dict:
     print("\n>> Constraints")
     _show_current_list(current.get("tech_stack", []), label="Current tech stack")
     tech_stack = _prompt_list("Tech stack (languages, frameworks, platforms)")
-    performance = _prompt("Performance constraints", required=False,
-                          default=current.get("performance", "") or "") or None
+    performance = (
+        _prompt(
+            "Performance constraints", required=False, default=current.get("performance", "") or ""
+        )
+        or None
+    )
     domain = current.get("_domain", "software")
-    security = _prompt("Security constraints", required=(domain == "infra"),
-                       default=current.get("security", "") or "") or None
+    security = (
+        _prompt(
+            "Security constraints",
+            required=(domain == "infra"),
+            default=current.get("security", "") or "",
+        )
+        or None
+    )
     return {"tech_stack": tech_stack, "performance": performance, "security": security}
 
 
@@ -183,6 +197,7 @@ COLLECTORS = {
 
 # ── Build spec from flat data dict ───────────────────────────────────────────
 
+
 def _build_spec(data: dict) -> ProjectSpec:
     return ProjectSpec(
         project=ProjectInfo(
@@ -226,6 +241,7 @@ def _data_from_spec(spec: ProjectSpec) -> dict:
 
 # ── Summary + edit loop ──────────────────────────────────────────────────────
 
+
 def _print_summary(data: dict) -> None:
     print("\n=== Project Spec Summary ===\n")
     print(f"  [1] Project:       {data.get('name', '')} ({data.get('domain', '')})")
@@ -239,9 +255,11 @@ def _print_summary(data: dict) -> None:
     print(f"  [3] Non-Functional:{len(data.get('non_functional', []))} items")
     for item in data.get("non_functional", []):
         print(f"        - {item}")
-    print(f"  [4] Constraints:   {len(data.get('tech_stack', []))} tech stack"
-          f" | perf: {'yes' if data.get('performance') else 'none'}"
-          f" | security: {'yes' if data.get('security') else 'none'}")
+    print(
+        f"  [4] Constraints:   {len(data.get('tech_stack', []))} tech stack"
+        f" | perf: {'yes' if data.get('performance') else 'none'}"
+        f" | security: {'yes' if data.get('security') else 'none'}"
+    )
     print(f"  [5] Non-Goals:     {len(data.get('non_goals', []))} items")
     for item in data.get("non_goals", []):
         print(f"        - {item}")
@@ -282,6 +300,7 @@ def _review_loop(data: dict) -> dict | None:
 
 # ── Project scaffolding ──────────────────────────────────────────────────────
 
+
 def _scaffold_project_dir(target: Path) -> None:
     """Create the scaffolded project directory structure at *target*.
 
@@ -311,6 +330,7 @@ def _scaffold_project_dir(target: Path) -> None:
 
 
 # ── LLM-powered spec generation ──────────────────────────────────────────────
+
 
 def _generate_spec_suggestions(data: dict) -> dict | None:
     """Call the LLM to auto-generate remaining spec fields from the project seed.
@@ -357,6 +377,7 @@ def _generate_spec_suggestions(data: dict) -> dict | None:
 
 # ── Main collection flow ─────────────────────────────────────────────────────
 
+
 def collect_interactive() -> ProjectSpec | None:
     """Walk the user through every required field, then review/edit loop."""
     print("\n=== Autonomy Engine — Project Intake ===\n")
@@ -368,7 +389,9 @@ def collect_interactive() -> ProjectSpec | None:
     data.update(_collect_project(data))
 
     # Offer LLM-powered generation for remaining sections
-    if _prompt_yn("Generate suggestions for remaining sections from your description", default=True):
+    if _prompt_yn(
+        "Generate suggestions for remaining sections from your description", default=True
+    ):
         print("\n  Generating suggestions...")
         suggestions = _generate_spec_suggestions(data)
         if suggestions:
@@ -429,8 +452,17 @@ def main() -> None:
 
     sub.add_parser("edit", help="Edit the current project spec in state/inputs/")
 
-    from_file = sub.add_parser("from-file", help="Load a project spec from a YAML file")
+    from_file = sub.add_parser(
+        "from-file",
+        help="Load and validate a project spec from a YAML file (non-interactive)",
+    )
     from_file.add_argument("path", help="Path to project_spec.yml")
+    from_file.add_argument(
+        "--review",
+        action="store_true",
+        default=False,
+        help="Open interactive review/edit loop before writing",
+    )
 
     validate = sub.add_parser("validate", help="Validate an existing project_spec.yml")
     validate.add_argument("path", help="Path to project_spec.yml")
@@ -491,19 +523,22 @@ def main() -> None:
             print(f"Validation failed:\n{e}")
             sys.exit(1)
 
-        print(f"Spec loaded from {args.path}")
-        data = _data_from_spec(spec)
-        try:
-            result = _review_loop(data)
-        except (KeyboardInterrupt, EOFError):
-            print("\n\nCancelled.")
-            sys.exit(1)
+        if args.review:
+            # Interactive review/edit loop (opt-in)
+            print(f"Spec loaded from {args.path}")
+            data = _data_from_spec(spec)
+            try:
+                result = _review_loop(data)
+            except (KeyboardInterrupt, EOFError):
+                print("\n\nCancelled.")
+                sys.exit(1)
 
-        if result is None:
-            print("Aborted.")
-            sys.exit(1)
+            if result is None:
+                print("Aborted.")
+                sys.exit(1)
 
-        spec = _build_spec(result)
+            spec = _build_spec(result)
+
         _write_and_report(spec)
 
     elif args.command == "validate":

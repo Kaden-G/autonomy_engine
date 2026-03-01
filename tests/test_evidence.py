@@ -93,6 +93,19 @@ class TestRunCheck:
         record = run_check("exit42", "exit 42", cwd=tmp_path)
         assert record["exit_code"] == 42
 
+    def test_argv_is_shlex_split(self, tmp_path):
+        record = run_check("args", "python -m pytest tests/", cwd=tmp_path)
+        assert record["argv"] == ["python", "-m", "pytest", "tests/"]
+
+    def test_argv_handles_quoted_args(self, tmp_path):
+        record = run_check("quoted", 'echo "hello world"', cwd=tmp_path)
+        assert record["argv"] == ["echo", "hello world"]
+
+    def test_argv_present_in_simple_command(self, tmp_path):
+        record = run_check("simple", "echo hi", cwd=tmp_path)
+        assert "argv" in record
+        assert isinstance(record["argv"], list)
+
 
 # ── save_evidence / load_all_evidence ────────────────────────────────────────
 
@@ -157,11 +170,19 @@ class TestNoChecksRecord:
     def test_has_all_required_fields(self):
         record = no_checks_record()
         required = [
-            "name", "command", "cwd", "started_at", "finished_at",
-            "exit_code", "stdout", "stderr", "stdout_hash", "stderr_hash",
+            "name",
+            "command",
+            "cwd",
+            "started_at",
+            "finished_at",
+            "exit_code",
+            "stdout",
+            "stderr",
+            "stdout_hash",
+            "stderr_hash",
         ]
         for field in required:
-            assert field in record
+            assert field in record, f"Missing field: {field}"
 
 
 # ── format_evidence_for_llm ─────────────────────────────────────────────────

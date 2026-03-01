@@ -16,6 +16,7 @@ control what happens when a ``DecisionRequired`` exception is raised:
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,12 +27,13 @@ from prefect import pause_flow_run
 from prefect.input import RunInput
 
 from engine.context import get_state_dir, get_templates_dir
-from engine.tracer import get_run_id
+from engine.tracer import get_run_id, trace
 
 logger = logging.getLogger(__name__)
 
 
 # ── Exception ────────────────────────────────────────────────────────────────
+
 
 class DecisionRequired(Exception):
     """Raised by tasks when a human decision is needed before proceeding."""
@@ -40,12 +42,11 @@ class DecisionRequired(Exception):
         self.gate = gate
         self.stage = stage
         self.options = options
-        super().__init__(
-            f"Decision required at {stage}: {gate} (options: {options})"
-        )
+        super().__init__(f"Decision required at {stage}: {gate} (options: {options})")
 
 
 # ── Prefect UI input schema ─────────────────────────────────────────────────
+
 
 class DecisionInput(RunInput):
     """Schema for human decision input via Prefect UI."""
@@ -55,6 +56,7 @@ class DecisionInput(RunInput):
 
 
 # ── Path helpers ─────────────────────────────────────────────────────────────
+
 
 def _gate_slug(gate: str) -> str:
     """Normalize a gate name to a filesystem-safe slug."""
@@ -67,7 +69,31 @@ def _decision_path(gate: str) -> Path:
     return get_state_dir() / "runs" / get_run_id() / "decisions" / f"{slug}.json"
 
 
+# ── Actor resolution ──────────────────────────────────────────────────────────
+
+
+def _resolve_actor(actor: str | None) -> str:
+    """Determine the actor identity using a best-effort strategy.
+
+    Priority:
+    1. Explicit *actor* parameter (if not None)
+    2. ``AE_ACTOR`` environment variable
+    3. System username from ``USER`` / ``LOGNAME`` / ``USERNAME``
+    4. Fallback ``"human"``
+    """
+    if actor is not None:
+        return actor
+    ae_actor = os.environ.get("AE_ACTOR")
+    if ae_actor:
+        return ae_actor
+    user = os.environ.get("USER") or os.environ.get("LOGNAME") or os.environ.get("USERNAME")
+    if user:
+        return f"human:{user}"
+    return "human"
+
+
 # ── Core API ─────────────────────────────────────────────────────────────────
+
 
 def require_decision(gate: str, options: list[str]) -> DecisionInput:
     """Pause the flow and wait for a human decision via Prefect UI.
@@ -91,18 +117,22 @@ def save_decision(
     stage: str,
     allowed_options: list[str],
     selected: str,
-    actor: str = "human",
+    actor: str | None = None,
     rationale: str = "",
 ) -> None:
     """Persist a validated decision record to the active run.
+
+    *actor* is resolved via ``_resolve_actor`` — explicit value, ``AE_ACTOR``
+    env var, system username, or ``"human"`` fallback.
 
     Raises ``ValueError`` if *selected* is not in *allowed_options*.
     """
     if selected not in allowed_options:
         raise ValueError(
-            f"Invalid choice '{selected}' for gate '{gate}'. "
-            f"Must be one of: {allowed_options}"
+            f"Invalid choice '{selected}' for gate '{gate}'. Must be one of: {allowed_options}"
         )
+
+    resolved_actor = _resolve_actor(actor)
 
     record = {
         "run_id": get_run_id(),
@@ -110,7 +140,7 @@ def save_decision(
         "stage": stage,
         "allowed_options": allowed_options,
         "selected": selected,
-        "actor": actor,
+        "actor": resolved_actor,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "rationale": rationale,
     }
@@ -118,6 +148,21 @@ def save_decision(
     path = _decision_path(gate)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(record, indent=2) + "\n")
+
+    # Emit a trace entry for the decision event
+    rel_path = str(path.relative_to(get_state_dir()))
+    trace(
+        task="decision",
+        inputs=[],
+        outputs=[rel_path],
+        extra={
+            "gate": gate,
+            "stage": stage,
+            "selected": selected,
+            "actor": resolved_actor,
+            "has_rationale": bool(rationale),
+        },
+    )
 
 
 def decision_exists(gate: str) -> bool:
@@ -132,9 +177,7 @@ def load_decision(gate: str) -> dict:
     """
     path = _decision_path(gate)
     if not path.exists():
-        raise FileNotFoundError(
-            f"No decision record for gate '{gate}' in run {get_run_id()}"
-        )
+        raise FileNotFoundError(f"No decision record for gate '{gate}' in run {get_run_id()}")
     return json.loads(path.read_text())
 
 
@@ -223,7 +266,9 @@ def handle_gate(
         policy = get_gate_policy(stage)
         logger.info(
             "DecisionRequired at %s (gate=%s), policy=%s",
-            stage, exc.gate, policy.policy,
+            stage,
+            exc.gate,
+            policy.policy,
         )
 
         if policy.policy == "skip":

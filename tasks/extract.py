@@ -8,7 +8,7 @@ import yaml
 from pydantic import ValidationError
 from prefect import task
 
-from engine.context import ENGINE_ROOT
+from engine.context import get_project_dir
 from engine.state_loader import load_state_file, save_state_file
 from engine.tracer import trace
 from tasks.manifest_schema import FileManifest
@@ -17,8 +17,8 @@ from tasks.manifest_schema import FileManifest
 def _slugify(name: str) -> str:
     """Lowercase, replace spaces/underscores with hyphens, strip non-alphanumeric."""
     slug = name.lower().strip()
-    slug = re.sub(r'[\s_]+', '-', slug)
-    slug = re.sub(r'[^a-z0-9\-]', '', slug)
+    slug = re.sub(r"[\s_]+", "-", slug)
+    slug = re.sub(r"[^a-z0-9\-]", "", slug)
     return slug
 
 
@@ -69,9 +69,7 @@ def _safe_path(output_dir: Path, filepath: str) -> Path:
 
     # Final containment check — resolved path must be inside the output dir
     if not resolved.is_relative_to(output_dir.resolve()):
-        raise ValueError(
-            f"Path escapes output directory: {filepath} -> {resolved}"
-        )
+        raise ValueError(f"Path escapes output directory: {filepath} -> {resolved}")
 
     return resolved
 
@@ -106,8 +104,8 @@ def extract_project() -> None:
     project_name = spec["project"]["name"]
     slug = _slugify(project_name)
 
-    # Output directory is a sibling of the engine root
-    output_dir = ENGINE_ROOT.parent / slug
+    # Output directory is a sibling of the active project directory
+    output_dir = get_project_dir().parent / slug
 
     # Write each file (with path safety validation)
     written_paths: list[str] = []
@@ -125,4 +123,5 @@ def extract_project() -> None:
         task="extract",
         inputs=["implementations/FILE_MANIFEST.json", "inputs/project_spec.yml"],
         outputs=["build/MANIFEST.md"] + [f"<external>:{f}" for f in sorted(written_paths)],
+        external_base=output_dir,
     )

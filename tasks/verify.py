@@ -55,6 +55,4 @@ def verify_system() -> None:
 
     # Gate trigger: raise if LLM rejected and no decision recorded yet
     if "REJECTED" in verification and not decision_exists("verification_review"):
-        raise DecisionRequired(
-            "verification_review", "verify", ["accept", "reject"]
-        )
+        raise DecisionRequired("verification_review", "verify", ["accept", "reject"])

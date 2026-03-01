@@ -76,6 +76,7 @@ jobs:
           import tasks.design
           import tasks.extract
           import tasks.implement
+          import tasks.manifest_schema
           import tasks.test
           import tasks.verify
           print('All imports OK')

@@ -12,7 +12,7 @@ from pathlib import Path
 import yaml
 from prefect import task
 
-from engine.context import ENGINE_ROOT
+from engine.context import get_project_dir
 from engine.decision_gates import DecisionRequired, decision_exists, load_decision
 from engine.evidence import (
     load_all_evidence,
@@ -29,8 +29,8 @@ from engine.tracer import get_run_id, trace
 def _slugify(name: str) -> str:
     """Lowercase, replace spaces/underscores with hyphens, strip non-alphanumeric."""
     slug = name.lower().strip()
-    slug = re.sub(r'[\s_]+', '-', slug)
-    slug = re.sub(r'[^a-z0-9\-]', '', slug)
+    slug = re.sub(r"[\s_]+", "-", slug)
+    slug = re.sub(r"[^a-z0-9\-]", "", slug)
     return slug
 
 
@@ -39,7 +39,7 @@ def _get_project_dir() -> Path:
     spec_raw = load_state_file("inputs/project_spec.yml")
     spec = yaml.safe_load(spec_raw)
     project_name = spec["project"]["name"]
-    return ENGINE_ROOT.parent / _slugify(project_name)
+    return get_project_dir().parent / _slugify(project_name)
 
 
 def _build_test_summary(evidence: list[dict]) -> str:
@@ -49,9 +49,7 @@ def _build_test_summary(evidence: list[dict]) -> str:
     if not evidence or (len(evidence) == 1 and evidence[0]["name"] == "no_checks_configured"):
         lines.append("**No automated checks were configured for this project.**")
         lines.append("")
-        lines.append(
-            "Add a `checks` section to `config.yml` to enable real test execution."
-        )
+        lines.append("Add a `checks` section to `config.yml` to enable real test execution.")
         lines.append("")
         return "\n".join(lines)
 
@@ -67,7 +65,9 @@ def _build_test_summary(evidence: list[dict]) -> str:
             if env.get("platform"):
                 lines.append(f"- **Platform:** {env['platform']}")
             if env.get("deps_installed") is not None:
-                lines.append(f"- **Dependencies installed:** {'yes' if env['deps_installed'] else 'no'}")
+                lines.append(
+                    f"- **Dependencies installed:** {'yes' if env['deps_installed'] else 'no'}"
+                )
             lines.append("")
             break
 
@@ -162,11 +162,7 @@ def _has_failures(evidence: list[dict]) -> bool:
 
     Ignores the ``no_checks_configured`` sentinel record.
     """
-    return any(
-        r["exit_code"] != 0
-        for r in evidence
-        if r.get("name") != "no_checks_configured"
-    )
+    return any(r["exit_code"] != 0 for r in evidence if r.get("name") != "no_checks_configured")
 
 
 @task(name="test")
@@ -208,6 +204,4 @@ def test_system() -> None:
 
     # Gate trigger: raise if failures detected and no decision recorded yet
     if _has_failures(evidence) and not decision_exists("test_failure_triage"):
-        raise DecisionRequired(
-            "test_failure_triage", "test", ["continue", "abort"]
-        )
+        raise DecisionRequired("test_failure_triage", "test", ["continue", "abort"])

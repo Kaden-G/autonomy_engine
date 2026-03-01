@@ -12,6 +12,7 @@ from engine.decision_gates import (
     DecisionRequired,
     GatePolicy,
     _VALID_POLICIES,
+    _resolve_actor,
     decision_exists,
     get_gate_policy,
     handle_gate,
@@ -69,7 +70,8 @@ class TestSaveAndLoadDecision:
         assert record["stage"] == "design"
         assert record["allowed_options"] == ["A", "B"]
         assert record["selected"] == "B"
-        assert record["actor"] == "human"
+        # actor is resolved — with USER env set it's "human:<username>"
+        assert record["actor"].startswith("human")
         assert record["rationale"] == "better fit"
         assert "timestamp" in record
         assert "run_id" in record
@@ -260,15 +262,19 @@ class TestGetGatePolicy:
         templates = tmp_path / "templates"
         templates.mkdir()
         gates_file = templates / "DECISION_GATES.yml"
-        gates_file.write_text(yaml.dump({
-            "gates": {
-                "test": {
-                    "policy": "auto",
-                    "default_option": "continue",
-                    "description": "test gate",
+        gates_file.write_text(
+            yaml.dump(
+                {
+                    "gates": {
+                        "test": {
+                            "policy": "auto",
+                            "default_option": "continue",
+                            "description": "test gate",
+                        }
+                    }
                 }
-            }
-        }))
+            )
+        )
         engine.context.init(tmp_path)
         policy = get_gate_policy("test")
         assert policy.policy == "auto"
@@ -315,8 +321,10 @@ class TestHandleGate:
         engine.context.init(tmp_path)
         (tmp_path / "templates").mkdir()
         called = []
+
         def task_fn():
             called.append(1)
+
         handle_gate(task_fn, "design", lambda e: None)
         assert called == [1]
 
@@ -331,6 +339,7 @@ class TestHandleGate:
         init_run()
 
         call_count = []
+
         def task_fn():
             call_count.append(1)
             if len(call_count) == 1:
@@ -352,6 +361,7 @@ class TestHandleGate:
         init_run()
 
         call_count = []
+
         def task_fn():
             call_count.append(1)
             if len(call_count) == 1:
@@ -375,6 +385,7 @@ class TestHandleGate:
         init_run()
 
         call_count = []
+
         def task_fn():
             call_count.append(1)
             if len(call_count) == 1:
@@ -416,3 +427,76 @@ class TestHandleGate:
         handle_gate(task_fn, "design", on_pause)
         assert len(pause_calls) == 1
         assert len(call_count) == 2
+
+
+# ── _resolve_actor ─────────────────────────────────────────────────────────
+
+
+class TestResolveActor:
+    def test_explicit_actor_wins(self, monkeypatch):
+        monkeypatch.setenv("AE_ACTOR", "env-actor")
+        assert _resolve_actor("explicit") == "explicit"
+
+    def test_ae_actor_env_var(self, monkeypatch):
+        monkeypatch.setenv("AE_ACTOR", "ci-pipeline")
+        monkeypatch.delenv("USER", raising=False)
+        assert _resolve_actor(None) == "ci-pipeline"
+
+    def test_system_user_fallback(self, monkeypatch):
+        monkeypatch.delenv("AE_ACTOR", raising=False)
+        monkeypatch.setenv("USER", "testuser")
+        assert _resolve_actor(None) == "human:testuser"
+
+    def test_final_fallback_is_human(self, monkeypatch):
+        monkeypatch.delenv("AE_ACTOR", raising=False)
+        monkeypatch.delenv("USER", raising=False)
+        monkeypatch.delenv("LOGNAME", raising=False)
+        monkeypatch.delenv("USERNAME", raising=False)
+        assert _resolve_actor(None) == "human"
+
+
+# ── Decision trace entries ──────────────────────────────────────────────────
+
+
+class TestDecisionTraceEntry:
+    def test_save_decision_emits_trace_entry(self, tmp_path):
+        run_id = init_run()
+        save_decision("arch", "design", ["A", "B"], "A", actor="tester")
+        trace_file = tmp_path / "state" / "runs" / run_id / "trace.jsonl"
+        assert trace_file.exists()
+        entries = [json.loads(line) for line in trace_file.read_text().strip().splitlines()]
+        decision_entries = [e for e in entries if e["task"] == "decision"]
+        assert len(decision_entries) == 1
+        entry = decision_entries[0]
+        assert entry["extra"]["gate"] == "arch"
+        assert entry["extra"]["stage"] == "design"
+        assert entry["extra"]["selected"] == "A"
+        assert entry["extra"]["actor"] == "tester"
+
+    def test_trace_entry_has_decision_artifact_output(self, tmp_path):
+        run_id = init_run()
+        save_decision("gate1", "test", ["X"], "X")
+        trace_file = tmp_path / "state" / "runs" / run_id / "trace.jsonl"
+        entries = [json.loads(line) for line in trace_file.read_text().strip().splitlines()]
+        decision_entries = [e for e in entries if e["task"] == "decision"]
+        entry = decision_entries[0]
+        # Output should reference the decision file path
+        output_keys = list(entry["outputs"].keys())
+        assert len(output_keys) == 1
+        assert "decisions/gate1.json" in output_keys[0]
+
+    def test_trace_entry_has_rationale_flag(self, tmp_path):
+        run_id = init_run()
+        save_decision("g", "s", ["A"], "A", rationale="because")
+        trace_file = tmp_path / "state" / "runs" / run_id / "trace.jsonl"
+        entries = [json.loads(line) for line in trace_file.read_text().strip().splitlines()]
+        decision_entries = [e for e in entries if e["task"] == "decision"]
+        assert decision_entries[0]["extra"]["has_rationale"] is True
+
+    def test_trace_entry_no_rationale_flag(self, tmp_path):
+        run_id = init_run()
+        save_decision("g", "s", ["A"], "A")
+        trace_file = tmp_path / "state" / "runs" / run_id / "trace.jsonl"
+        entries = [json.loads(line) for line in trace_file.read_text().strip().splitlines()]
+        decision_entries = [e for e in entries if e["task"] == "decision"]
+        assert decision_entries[0]["extra"]["has_rationale"] is False

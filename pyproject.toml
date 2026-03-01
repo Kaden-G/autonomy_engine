@@ -32,6 +32,7 @@ target-version = "py310"
 # load_dotenv() must run before other imports
 "flows/autonomous_flow.py" = ["E402"]
 "intake/intake.py" = ["E402"]
+"bench/benchmark_runs.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

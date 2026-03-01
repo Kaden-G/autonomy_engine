@@ -12,6 +12,9 @@ state/TRACE.json
 # Generated project artifacts
 customer_database/
 
+# Benchmark results
+bench/results_*.json
+
 # Python
 __pycache__/
 *.py[cod]

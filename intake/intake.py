@@ -348,7 +348,7 @@ def _generate_spec_suggestions(data: dict) -> dict | None:
             domain=data.get("domain", "software"),
         )
 
-        provider = get_provider()
+        provider = get_provider(stage="intake")
         response = provider.generate(prompt)
 
         # Extract YAML block from between ```yaml and ``` fences

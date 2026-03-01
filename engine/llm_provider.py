@@ -62,8 +62,12 @@ class OpenAIProvider(LLMProvider):
         return response.choices[0].message.content
 
 
-def get_provider(config_path: str | None = None) -> LLMProvider:
-    """Factory: return the LLM provider specified in config."""
+def get_provider(config_path: str | None = None, stage: str | None = None) -> LLMProvider:
+    """Factory: return the LLM provider specified in config.
+
+    If *stage* is given and ``llm.models.<stage>`` exists in the config,
+    that model name is used instead of the provider default.
+    """
     if config_path is None:
         config_path = str(get_config_path())
     with open(config_path) as f:
@@ -71,12 +75,18 @@ def get_provider(config_path: str | None = None) -> LLMProvider:
 
     llm = config["llm"]
     provider_name = llm["provider"]
-
     max_tokens = llm.get("max_tokens", 16384)
 
+    # Resolve model: stage override → provider default
+    default_model = llm[provider_name]["model"]
+    if stage and "models" in llm and stage in llm["models"]:
+        model = llm["models"][stage]
+    else:
+        model = default_model
+
     if provider_name == "claude":
-        return ClaudeProvider(model=llm["claude"]["model"], max_tokens=max_tokens)
+        return ClaudeProvider(model=model, max_tokens=max_tokens)
     elif provider_name == "openai":
-        return OpenAIProvider(model=llm["openai"]["model"], max_tokens=max_tokens)
+        return OpenAIProvider(model=model, max_tokens=max_tokens)
     else:
         raise ValueError(f"Unknown LLM provider: {provider_name}")

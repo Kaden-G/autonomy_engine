@@ -63,6 +63,7 @@ def _parse_trace(run_id: str, state_dir: Path) -> dict:
     trace_path = state_dir / "runs" / run_id / "trace.jsonl"
     model_calls = 0
     cache_hits = 0
+    calls_by_stage: dict[str, int] = {}
 
     if trace_path.exists():
         for line in trace_path.read_text().splitlines():
@@ -71,10 +72,16 @@ def _parse_trace(run_id: str, state_dir: Path) -> dict:
             entry = json.loads(line)
             if entry.get("model") is not None:
                 model_calls += 1
+                stage = entry.get("task", "unknown")
+                calls_by_stage[stage] = calls_by_stage.get(stage, 0) + 1
             if entry.get("extra", {}).get("cache_hit"):
                 cache_hits += 1
 
-    return {"model_calls": model_calls, "cache_hits": cache_hits}
+    return {
+        "model_calls": model_calls,
+        "cache_hits": cache_hits,
+        "model_calls_by_stage": calls_by_stage,
+    }
 
 
 def _measure_prompts(state_dir: Path, prompts_dir: Path) -> dict:
@@ -208,6 +215,7 @@ def run_pipeline(project_dir: str) -> dict:
         "total_wall_s": round(total_wall_s, 3),
         "stage_wall_s": {k: round(v, 3) for k, v in stage_wall_s.items()},
         "model_calls": trace_metrics["model_calls"],
+        "model_calls_by_stage": trace_metrics["model_calls_by_stage"],
         "cache_hits": trace_metrics["cache_hits"],
         "prompt_payload_bytes": {
             stage: prompt_sizes[stage]["bytes"]
@@ -241,11 +249,21 @@ def _aggregate(runs: list[dict]) -> dict:
     prompt_bytes = [r["prompt_payload_bytes"]["total"] for r in runs]
     response_bytes = [r["response_payload_bytes"]["total"] for r in runs]
 
+    # Aggregate per-stage model calls across runs
+    all_stages: set[str] = set()
+    for r in runs:
+        all_stages.update(r.get("model_calls_by_stage", {}).keys())
+    mean_by_stage = {
+        stage: round(mean(r.get("model_calls_by_stage", {}).get(stage, 0) for r in runs), 1)
+        for stage in sorted(all_stages)
+    }
+
     return {
         "mean_total_wall_s": round(mean(totals), 3),
         "min_total_wall_s": round(min(totals), 3),
         "max_total_wall_s": round(max(totals), 3),
         "mean_model_calls": round(mean(model_calls), 1),
+        "mean_model_calls_by_stage": mean_by_stage,
         "mean_prompt_bytes": round(mean(prompt_bytes)),
         "mean_response_bytes": round(mean(response_bytes)),
     }

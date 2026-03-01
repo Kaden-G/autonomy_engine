@@ -5,6 +5,10 @@ llm:
     model: "claude-sonnet-4-20250514"
   openai:
     model: "gpt-4o"
+  models:                          # per-stage model overrides (optional)
+    design: "claude-sonnet-4-20250514"
+    implement: "claude-sonnet-4-20250514"
+    verify: "claude-sonnet-4-20250514"
 
 # Notifications log to the Python logger.  To receive real alerts,
 # replace engine/notifier.py with a Slack/email implementation.

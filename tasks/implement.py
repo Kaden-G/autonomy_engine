@@ -61,7 +61,7 @@ def implement_system() -> None:
         constraints=constraints,
     )
 
-    provider = get_provider()
+    provider = get_provider(stage="implement")
     p_hash = hash_prompt(prompt)
     response = provider.generate(prompt)
 

@@ -34,7 +34,7 @@ def verify_system() -> None:
         requirements=requirements,
     )
 
-    provider = get_provider()
+    provider = get_provider(stage="verify")
     p_hash = hash_prompt(prompt)
     verification = provider.generate(prompt)
 

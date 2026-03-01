@@ -34,7 +34,7 @@ def design_system() -> None:
         extra_context=extra_context,
     )
 
-    provider = get_provider()
+    provider = get_provider(stage="design")
     p_hash = hash_prompt(prompt)
     architecture = provider.generate(prompt)
 

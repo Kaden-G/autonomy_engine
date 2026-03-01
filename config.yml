@@ -5,7 +5,11 @@ llm:
     model: "claude-sonnet-4-20250514"
   openai:
     model: "gpt-4o"
-  models:                          # per-stage model overrides (optional)
+  # Per-stage model overrides (optional).
+  # If a stage key is missing, falls back to llm.<provider>.model above.
+  # LLM responses are cached deterministically under state/cache/llm/ —
+  # identical inputs produce a cache hit, skipping the API call entirely.
+  models:
     design: "claude-sonnet-4-20250514"
     implement: "claude-sonnet-4-20250514"
     verify: "claude-sonnet-4-20250514"

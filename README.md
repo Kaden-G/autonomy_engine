@@ -196,6 +196,54 @@ When using `--project-dir`, the scaffolded directory looks like:
 Without `--project-dir`, all state and config lives in the engine root (unchanged
 from previous behavior).
 
+## Efficiency Features
+
+### Per-Stage Model Selection
+
+Each pipeline stage can use a different LLM model. Configure via `config.yml`:
+
+```yaml
+llm:
+  models:
+    design: "claude-sonnet-4-20250514"      # cheaper model for structuring
+    implement: "claude-sonnet-4-20250514"    # full model for code generation
+    verify: "claude-sonnet-4-20250514"       # cheaper model for summarizing
+```
+
+If a stage key is missing, falls back to `llm.<provider>.model`.
+
+### LLM Response Caching
+
+Deterministic cache under `state/cache/llm/`. Cache key is derived from stage, prompt template hash, input content hash, model name, and generation parameters. If inputs haven't changed, the cached response is reused without an API call. Cache artifacts are immutable (first write wins, never overwritten).
+
+### Selective Verify
+
+The verify stage supports three modes to avoid unnecessary LLM calls:
+
+- **`always_llm`** — always call the LLM (default, original behavior)
+- **`auto`** — skip LLM when evidence makes outcome obvious (controlled by `llm_on_pass_summary` and `llm_on_fail_summary` flags)
+- **`never_llm`** — always write a deterministic VERIFICATION.md
+
+### Sandbox Venv Caching
+
+Virtualenvs created for test sandbox execution are cached under `state/sandbox_cache/venvs/`, keyed on dependency spec + Python version + sandbox config. Subsequent runs with the same dependencies reuse the cached venv instead of creating a new one. A shared pip cache (`state/sandbox_cache/pip/`) further speeds up dependency installation.
+
+### Benchmarking
+
+Measure pipeline efficiency with the benchmark runner:
+
+```bash
+python bench/benchmark_runs.py --runs 3 --project-dir ~/projects/myapp
+```
+
+Compare before/after results:
+
+```bash
+python bench/compare_results.py bench/results_old.json bench/results_new.json
+```
+
+See `bench/README.md` for full documentation.
+
 ## Configuration
 
 ### config.yml — Runtime settings
@@ -208,6 +256,10 @@ llm:
     model: "claude-sonnet-4-20250514"
   openai:
     model: "gpt-4o"
+  models:                  # per-stage model overrides (optional)
+    design: "claude-sonnet-4-20250514"
+    implement: "claude-sonnet-4-20250514"
+    verify: "claude-sonnet-4-20250514"
 
 notifications:
   enabled: false           # log-only; replace engine/notifier.py for real alerts
@@ -215,6 +267,11 @@ notifications:
 sandbox:
   enabled: true            # isolate test execution in temp workspace
   install_deps: true
+
+verify:
+  mode: always_llm         # always_llm | auto | never_llm
+  llm_on_fail_summary: true
+  llm_on_pass_summary: true
 
 checks: []                 # approved test commands (see config.yml for examples)
 ```

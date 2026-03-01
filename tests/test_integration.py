@@ -98,7 +98,9 @@ class TestExtractEvidenceVerifyPipeline:
         assert "README.md" in manifest_md
 
         # ── Step 2: Evidence capture ─────────────────────────────────────
-        # Run a real check against the extracted project (no sandbox)
+        # Run a real check against the extracted project (no sandbox).
+        # Safety: app.py contains only `print('hello')` — no network,
+        # filesystem, or import side-effects. cwd is pytest tmp_path.
         record = run_check(
             name="smoke_test",
             command="python app.py",

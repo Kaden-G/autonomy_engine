@@ -147,6 +147,19 @@ python flows/autonomous_flow.py --project-dir ~/projects/solo1
 
 The engine will refuse to start if intake has not been completed.
 
+### Audit Reports
+
+After a run completes, export a self-contained audit bundle:
+
+```bash
+python -m engine.report --run-id <id> [--out path] [--project-dir dir]
+```
+
+This produces a `.tar.gz` containing the trace, config snapshot, evidence,
+decisions, a rebuilt artifact manifest, and an integrity check result.
+Failed integrity is recorded (not an error) so auditors can see exactly
+what broke.
+
 The flow will appear in the Prefect UI at `http://localhost:4200`. If a decision gate triggers with `pause` policy, resume from the UI.
 
 After a successful run, the final project files are extracted to a sibling directory:
@@ -233,6 +246,7 @@ engine/             Core modules (LLM provider, gates, state, tracing, notificat
   llm_provider.py   Claude + OpenAI behind a unified interface
   tracer.py         Hash-chained trace entries (trace.jsonl)
   evidence.py       Structured command execution and evidence capture
+  report.py         Audit bundle exporter (tar.gz with trace, evidence, integrity)
   notifier.py       Notification via Python logging (replace for real alerts)
 flows/              Prefect flow definition — the entry point
 tasks/              Individual pipeline stages as Prefect tasks

@@ -15,6 +15,8 @@ from engine.sandbox import (
 )
 from engine.tracer import GENESIS_HASH
 
+pytestmark = pytest.mark.slow
+
 
 @pytest.fixture(autouse=True)
 def _isolated_context(tmp_path):

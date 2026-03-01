@@ -6,7 +6,11 @@ state/tests/*
 state/decisions/*
 state/build/*
 state/runs/*
+state/TRACE.json
 !state/**/.gitkeep
+
+# Generated project artifacts
+customer_database/
 
 # Python
 __pycache__/

@@ -79,5 +79,6 @@ jobs:
           import tasks.manifest_schema
           import tasks.test
           import tasks.verify
+          import engine.report
           print('All imports OK')
           "

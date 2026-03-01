@@ -28,8 +28,6 @@ include = ["engine*", "flows*", "intake*", "tasks*"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-exclude = ["customer_database"]
-
 [tool.ruff.lint.per-file-ignores]
 # load_dotenv() must run before other imports
 "flows/autonomous_flow.py" = ["E402"]
@@ -37,3 +35,4 @@ exclude = ["customer_database"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: tests that create real virtualenvs (~30s each)"]

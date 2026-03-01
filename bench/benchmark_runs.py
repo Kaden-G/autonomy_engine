@@ -15,7 +15,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from statistics import mean
+from statistics import mean, median
 
 # Ensure engine root is importable
 _BENCH_DIR = Path(__file__).resolve().parent
@@ -59,11 +59,13 @@ def _abort_on_pause(exc: DecisionRequired) -> None:
 
 
 def _parse_trace(run_id: str, state_dir: Path) -> dict:
-    """Parse trace.jsonl for a run, counting model calls and cache hits."""
+    """Parse trace.jsonl for a run, counting model calls, cache hits, and sandbox info."""
     trace_path = state_dir / "runs" / run_id / "trace.jsonl"
     model_calls = 0
     cache_hits = 0
     calls_by_stage: dict[str, int] = {}
+    sandbox_venv_cache_hit: bool | None = None
+    sandbox_venv_setup_time_s: float | None = None
 
     if trace_path.exists():
         for line in trace_path.read_text().splitlines():
@@ -74,13 +76,23 @@ def _parse_trace(run_id: str, state_dir: Path) -> dict:
                 model_calls += 1
                 stage = entry.get("task", "unknown")
                 calls_by_stage[stage] = calls_by_stage.get(stage, 0) + 1
-            if entry.get("extra", {}).get("cache_hit"):
+            extra = entry.get("extra") or {}
+            if extra.get("cache_hit"):
                 cache_hits += 1
+            if extra.get("sandbox_venv_cache_hit") is not None:
+                sandbox_venv_cache_hit = extra["sandbox_venv_cache_hit"]
+            if extra.get("sandbox_venv_create_time_s") is not None:
+                sandbox_venv_setup_time_s = extra["sandbox_venv_create_time_s"]
+
+    cache_hit_rate = round(cache_hits / model_calls, 2) if model_calls > 0 else 0.0
 
     return {
         "model_calls": model_calls,
         "cache_hits": cache_hits,
+        "cache_hit_rate": cache_hit_rate,
         "model_calls_by_stage": calls_by_stage,
+        "sandbox_venv_cache_hit": sandbox_venv_cache_hit,
+        "sandbox_venv_setup_time_s": sandbox_venv_setup_time_s,
     }
 
 
@@ -217,6 +229,9 @@ def run_pipeline(project_dir: str) -> dict:
         "model_calls": trace_metrics["model_calls"],
         "model_calls_by_stage": trace_metrics["model_calls_by_stage"],
         "cache_hits": trace_metrics["cache_hits"],
+        "cache_hit_rate": trace_metrics["cache_hit_rate"],
+        "sandbox_venv_cache_hit": trace_metrics["sandbox_venv_cache_hit"],
+        "sandbox_venv_setup_time_s": trace_metrics["sandbox_venv_setup_time_s"],
         "prompt_payload_bytes": {
             stage: prompt_sizes[stage]["bytes"]
             for stage in ("design", "implement", "verify", "total")
@@ -240,30 +255,88 @@ def run_pipeline(project_dir: str) -> dict:
 
 
 def _aggregate(runs: list[dict]) -> dict:
-    """Compute mean/min/max of numeric fields across runs."""
+    """Compute mean/median stats across runs, structured by category."""
     if not runs:
         return {}
 
     totals = [r["total_wall_s"] for r in runs]
+
+    # Total time stats
+    total_time_stats = {
+        "mean": round(mean(totals), 3),
+        "median": round(median(totals), 3),
+    }
+
+    # Per-stage time stats
+    all_stages: set[str] = set()
+    for r in runs:
+        all_stages.update(r.get("stage_wall_s", {}).keys())
+    per_stage_time_stats = {}
+    for stage in sorted(all_stages):
+        stage_times = [r.get("stage_wall_s", {}).get(stage, 0) for r in runs]
+        per_stage_time_stats[stage] = {
+            "mean": round(mean(stage_times), 3),
+            "median": round(median(stage_times), 3),
+        }
+
+    # LLM section
+    all_llm_stages: set[str] = set()
+    for r in runs:
+        all_llm_stages.update(r.get("model_calls_by_stage", {}).keys())
+    calls_by_stage = {
+        stage: round(mean(r.get("model_calls_by_stage", {}).get(stage, 0) for r in runs), 1)
+        for stage in sorted(all_llm_stages)
+    }
+    prompt_chars_by_stage = {}
+    response_chars_by_stage = {}
+    for stage in ("design", "implement", "verify"):
+        prompt_chars_by_stage[stage] = round(
+            mean(r.get("prompt_chars", {}).get(stage, 0) for r in runs)
+        )
+        response_chars_by_stage[stage] = round(
+            mean(r.get("response_chars", {}).get(stage, 0) for r in runs)
+        )
+    cache_hit_rates = [r.get("cache_hit_rate", 0) for r in runs]
+
+    llm = {
+        "calls_by_stage": calls_by_stage,
+        "prompt_chars_by_stage": prompt_chars_by_stage,
+        "response_chars_by_stage": response_chars_by_stage,
+        "cache_hit_rate": round(mean(cache_hit_rates), 2),
+    }
+
+    # Sandbox section
+    venv_hits = [r.get("sandbox_venv_cache_hit") for r in runs]
+    venv_hits_valid = [v for v in venv_hits if v is not None]
+    venv_cache_hit_rate = (
+        round(sum(1 for v in venv_hits_valid if v) / len(venv_hits_valid), 2)
+        if venv_hits_valid
+        else 0.0
+    )
+    venv_setup_times = [r.get("sandbox_venv_setup_time_s") for r in runs]
+    venv_setup_valid = [v for v in venv_setup_times if v is not None]
+    mean_venv_setup = round(mean(venv_setup_valid), 3) if venv_setup_valid else 0.0
+
+    sandbox = {
+        "venv_cache_hit_rate": venv_cache_hit_rate,
+        "mean_venv_setup_time_s": mean_venv_setup,
+    }
+
+    # Backward-compat fields alongside new structure
     model_calls = [r["model_calls"] for r in runs]
     prompt_bytes = [r["prompt_payload_bytes"]["total"] for r in runs]
     response_bytes = [r["response_payload_bytes"]["total"] for r in runs]
 
-    # Aggregate per-stage model calls across runs
-    all_stages: set[str] = set()
-    for r in runs:
-        all_stages.update(r.get("model_calls_by_stage", {}).keys())
-    mean_by_stage = {
-        stage: round(mean(r.get("model_calls_by_stage", {}).get(stage, 0) for r in runs), 1)
-        for stage in sorted(all_stages)
-    }
-
     return {
-        "mean_total_wall_s": round(mean(totals), 3),
+        "total_time_stats": total_time_stats,
+        "per_stage_time_stats": per_stage_time_stats,
+        "llm": llm,
+        "sandbox": sandbox,
+        "mean_total_wall_s": total_time_stats["mean"],
         "min_total_wall_s": round(min(totals), 3),
         "max_total_wall_s": round(max(totals), 3),
         "mean_model_calls": round(mean(model_calls), 1),
-        "mean_model_calls_by_stage": mean_by_stage,
+        "mean_model_calls_by_stage": calls_by_stage,
         "mean_prompt_bytes": round(mean(prompt_bytes)),
         "mean_response_bytes": round(mean(response_bytes)),
     }
@@ -306,6 +379,7 @@ def main() -> None:
 
     output = {
         "git_sha": sha,
+        "run_count": args.runs,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "config": {"runs": args.runs, "project_dir": args.project_dir},
         "runs": runs,

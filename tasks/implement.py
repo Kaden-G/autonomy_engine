@@ -4,6 +4,7 @@ import json
 
 from prefect import task
 
+from engine.cache import build_cache_key, cache_lookup, cache_save, hash_content, hash_params
 from engine.context import get_prompts_dir
 from engine.llm_provider import get_provider
 from engine.state_loader import load_state_file, save_state_file
@@ -63,7 +64,21 @@ def implement_system() -> None:
 
     provider = get_provider(stage="implement")
     p_hash = hash_prompt(prompt)
-    response = provider.generate(prompt)
+
+    # Cache lookup
+    template_hash = hash_content(prompt_template)
+    envelope_hash = hash_content(architecture + requirements + constraints)
+    params_h = hash_params(provider.model, provider.max_tokens)
+    cache_key = build_cache_key("implement", template_hash, envelope_hash, provider.model, params_h)
+
+    cached = cache_lookup(cache_key)
+    if cached is not None:
+        response = cached
+        cache_hit = True
+    else:
+        response = provider.generate(prompt)
+        cache_save(cache_key, response, "implement", provider.model)
+        cache_hit = False
 
     markdown, manifest_json = _split_response(response)
 
@@ -80,4 +95,5 @@ def implement_system() -> None:
         prompt_hash=p_hash,
         provider=provider.provider,
         max_tokens=provider.max_tokens,
+        extra={"cache_hit": cache_hit, "cache_key": cache_key},
     )

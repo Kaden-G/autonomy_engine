@@ -5,6 +5,7 @@ The LLM summarizes and interprets evidence but does not replace it.
 
 from prefect import task
 
+from engine.cache import build_cache_key, cache_lookup, cache_save, hash_content, hash_params
 from engine.context import get_prompts_dir
 from engine.decision_gates import DecisionRequired, decision_exists, load_decision
 from engine.evidence import format_evidence_for_llm, load_all_evidence
@@ -36,7 +37,21 @@ def verify_system() -> None:
 
     provider = get_provider(stage="verify")
     p_hash = hash_prompt(prompt)
-    verification = provider.generate(prompt)
+
+    # Cache lookup
+    template_hash = hash_content(prompt_template)
+    envelope_hash = hash_content(evidence_text + acceptance + requirements)
+    params_h = hash_params(provider.model, provider.max_tokens)
+    cache_key = build_cache_key("verify", template_hash, envelope_hash, provider.model, params_h)
+
+    cached = cache_lookup(cache_key)
+    if cached is not None:
+        verification = cached
+        cache_hit = True
+    else:
+        verification = provider.generate(prompt)
+        cache_save(cache_key, verification, "verify", provider.model)
+        cache_hit = False
 
     output_path = "tests/VERIFICATION.md"
     save_state_file(output_path, verification)
@@ -51,6 +66,7 @@ def verify_system() -> None:
         prompt_hash=p_hash,
         provider=provider.provider,
         max_tokens=provider.max_tokens,
+        extra={"cache_hit": cache_hit, "cache_key": cache_key},
     )
 
     # Gate trigger: raise if LLM rejected and no decision recorded yet

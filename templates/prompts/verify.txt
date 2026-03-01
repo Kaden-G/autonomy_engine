@@ -1,7 +1,7 @@
-You are a project reviewer. Produce a final verification report.
+You are a project reviewer. Produce a final verification report based on real execution evidence.
 
-## Test Results
-{test_results}
+## Execution Evidence
+{evidence}
 
 ## Acceptance Criteria
 {acceptance_criteria}
@@ -11,6 +11,8 @@ You are a project reviewer. Produce a final verification report.
 
 ## Instructions
 - Summarize the overall status: APPROVED, APPROVED_WITH_CAVEATS, or REJECTED.
-- For each acceptance criterion, confirm the test result.
+- For each acceptance criterion, assess whether the execution evidence supports it.
+- Base your assessment on real evidence (exit codes, test output), not assumptions.
+- If no checks were executed, note this as a gap in verification coverage.
 - List any unresolved issues or risks.
 - Provide a clear go/no-go recommendation with rationale.

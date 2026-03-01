@@ -14,4 +14,27 @@ You are a senior software engineer. Generate an implementation based on the appr
 - Include: file structure, key modules with code, configuration files, and setup instructions.
 - Follow the architecture exactly. Do not deviate from approved design decisions.
 - Mark any sections where you made minor implementation choices with `<!-- IMPL_CHOICE: reason -->`.
-- Format each file with a bold filename before its code block, e.g. **path/to/file.py** followed by a fenced code block. This enables automated extraction.
+
+## File Manifest (REQUIRED)
+
+After all Markdown content, you MUST append a JSON manifest listing every file you produced.
+Place it between the exact marker comments shown below.
+
+<!-- FILE_MANIFEST_START -->
+```json
+{{
+  "files": [
+    {{
+      "path": "relative/path/to/file.py",
+      "content": "full file content here"
+    }}
+  ]
+}}
+```
+<!-- FILE_MANIFEST_END -->
+
+Rules for the manifest:
+- Every file in your implementation MUST appear in the manifest.
+- `path` is the relative path (e.g. `src/main.py`, `Dockerfile`, `.gitignore`).
+- `content` is the complete file content as a single JSON string (use `\n` for newlines).
+- Do NOT omit files — the manifest is the sole source of truth for automated extraction.

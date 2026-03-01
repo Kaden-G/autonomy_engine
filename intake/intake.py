@@ -302,13 +302,10 @@ def _scaffold_project_dir(target: Path) -> None:
     if not dst_templates.exists() and src_templates.is_dir():
         shutil.copytree(src_templates, dst_templates)
 
-    # Create state/ subdirectories and empty TRACE.json
+    # Create state/ subdirectories (runs/ holds per-run trace, evidence, decisions)
     state_dir = target / "state"
-    for subdir in ("inputs", "designs", "implementations", "tests", "decisions"):
+    for subdir in ("inputs", "designs", "implementations", "tests", "build", "runs"):
         (state_dir / subdir).mkdir(parents=True, exist_ok=True)
-    trace_path = state_dir / "TRACE.json"
-    if not trace_path.exists():
-        trace_path.write_text("[]\n")
 
     print(f"Scaffolded project directory: {target}")
 

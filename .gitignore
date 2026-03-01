@@ -1,11 +1,12 @@
-# State directory contents (except .gitkeep and TRACE.json init)
+# State directory contents (except .gitkeep sentinel files)
 state/inputs/*
 state/designs/*
 state/implementations/*
 state/tests/*
 state/decisions/*
+state/build/*
+state/runs/*
 !state/**/.gitkeep
-!state/TRACE.json
 
 # Python
 __pycache__/

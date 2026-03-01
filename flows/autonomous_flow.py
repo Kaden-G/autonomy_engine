@@ -16,6 +16,7 @@ from engine.decision_gates import (
     save_decision,
 )
 from engine.notifier import notify
+from engine.tracer import init_run
 from tasks.bootstrap import bootstrap_project
 from tasks.design import design_system
 from tasks.implement import implement_system
@@ -56,7 +57,12 @@ def autonomous_build(project_dir: str | None = None) -> None:
     # Phase 0 gate: intake must be complete
     _verify_intake()
 
-    # Step 1: Bootstrap — verify inputs and initialize trace
+    # Initialize run — creates state/runs/<run_id>/ and resets hash chain.
+    # Must happen before any task that calls trace().
+    run_id = init_run()
+    logger.info("Run %s started.", run_id)
+
+    # Step 1: Bootstrap — verify inputs and scaffold directories
     logger.info("Starting bootstrap...")
     bootstrap_project()
 

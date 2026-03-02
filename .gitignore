@@ -26,8 +26,10 @@ dist/
 build/
 .eggs/
 
-# Environment
+# Environment — never track actual env files
 .env
+.env.local
+.env.*.local
 .venv/
 venv/
 

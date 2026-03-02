@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Reject commits that include .env files with real secrets.
+
+staged=$(git diff --cached --name-only)
+
+for f in $staged; do
+    if [[ "$f" == ".env" ]]; then
+        echo "ERROR: Refusing to commit .env — it may contain secrets."
+        echo "       Use .env.example for template values."
+        exit 1
+    fi
+    # Also catch any file that looks like it contains an API key
+    if git diff --cached -- "$f" | grep -qE '(sk-ant-api|sk-[a-zA-Z0-9]{20,})'; then
+        echo "ERROR: Possible API key detected in $f"
+        echo "       Remove the secret before committing."
+        exit 1
+    fi
+done

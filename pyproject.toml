@@ -21,9 +21,13 @@ dev = [
     "pytest",
     "ruff",
 ]
+dashboard = [
+    "streamlit>=1.30",
+    "plotly>=5.0",
+]
 
 [tool.setuptools.packages.find]
-include = ["engine*", "flows*", "intake*", "tasks*"]
+include = ["engine*", "flows*", "intake*", "tasks*", "dashboard*"]
 
 [tool.ruff]
 line-length = 100

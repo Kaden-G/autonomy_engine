@@ -90,12 +90,19 @@ cd ~/Desktop/autonomy_engine
 pip install -e ".[dev]"
 ```
 
-Set API keys via environment variables (or `.env` file):
+### Environment Setup
 
-```bash
-export ANTHROPIC_API_KEY="sk-..."   # for Claude
-export OPENAI_API_KEY="sk-..."      # for OpenAI
-```
+1. Copy the example environment file:
+   ```bash
+   cp .env.example .env
+   ```
+2. Fill in your API keys in `.env`
+3. Enable the pre-commit hook:
+   ```bash
+   git config core.hooksPath .githooks
+   ```
+
+**Security:** The `.env` file is gitignored. The pre-commit hook will reject any attempt to commit files containing API keys. Never share `.env` — use `.env.example` as the template.
 
 ## Usage
 
@@ -146,6 +153,32 @@ python flows/autonomous_flow.py --project-dir ~/projects/solo1
 ```
 
 The engine will refuse to start if intake has not been completed.
+
+### Dashboard
+
+The Autonomy Engine includes a web dashboard for pipeline monitoring, audit trail inspection, and performance benchmarking.
+
+**Install:**
+```bash
+pip install -e ".[dashboard]"
+```
+
+**Launch:**
+```bash
+streamlit run dashboard/app.py
+```
+
+Or specify a project directory:
+```bash
+AUTONOMY_ENGINE_PROJECT_DIR=/path/to/project streamlit run dashboard/app.py
+```
+
+**Pages:**
+- **Dashboard** — Pipeline status, recent runs, cache stats
+- **Run Inspector** — Detailed trace timeline, evidence, decisions, artifacts per run
+- **Audit Trail** — Hash chain visualization with integrity verification
+- **Configuration** — Active settings, gate policies, check commands
+- **Benchmarks** — Per-stage timing charts, cache hit rates, before/after comparison
 
 ### Audit Reports
 

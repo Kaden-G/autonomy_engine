@@ -10,7 +10,15 @@ Or with a specific project directory:
 import streamlit as st
 
 from dashboard.data_loader import find_project_dir
-from dashboard.pages import audit_trail, benchmarks, config_editor, home, run_inspector
+from dashboard.pages import (
+    audit_trail,
+    benchmarks,
+    config_editor,
+    create_project,
+    home,
+    run_inspector,
+    run_pipeline,
+)
 
 
 # -- Page Config ----------------------------------------------------------
@@ -73,6 +81,8 @@ with st.sidebar:
 
     pages = {
         "Dashboard": "📊",
+        "Create Project": "➕",
+        "Run Pipeline": "🚀",
         "Run Inspector": "🔍",
         "Audit Trail": "🔒",
         "Configuration": "⚙️",
@@ -99,6 +109,10 @@ with st.sidebar:
 
 if selected_page == "Dashboard":
     home.render(project_dir)
+elif selected_page == "Create Project":
+    create_project.render(project_dir)
+elif selected_page == "Run Pipeline":
+    run_pipeline.render(project_dir)
 elif selected_page == "Run Inspector":
     run_inspector.render(project_dir)
 elif selected_page == "Audit Trail":

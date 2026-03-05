@@ -9,7 +9,9 @@ import yaml
 from dashboard.data_loader import (
     get_cache_stats,
     get_intake_status,
+    get_latest_run_id,
     get_pipeline_status,
+    is_intake_complete,
     list_runs,
     load_config,
     load_trace,
@@ -162,6 +164,41 @@ class TestCacheStats:
         stats = get_cache_stats(project)
         assert stats["total_entries"] == 1
         assert stats["by_stage"]["design"] == 1
+
+
+class TestIsIntakeComplete:
+    def test_incomplete(self, project):
+        assert is_intake_complete(project) is False
+
+    def test_complete(self, project):
+        inputs = project / "state" / "inputs"
+        for f in [
+            "project_spec.yml",
+            "REQUIREMENTS.md",
+            "CONSTRAINTS.md",
+            "NON_GOALS.md",
+            "ACCEPTANCE_CRITERIA.md",
+        ]:
+            (inputs / f).write_text("content")
+        assert is_intake_complete(project) is True
+
+
+class TestGetLatestRunId:
+    def test_empty(self, project):
+        assert get_latest_run_id(project) is None
+
+    def test_no_runs_dir(self, tmp_path):
+        # No state/runs directory at all
+        (tmp_path / "state").mkdir()
+        assert get_latest_run_id(tmp_path) is None
+
+    def test_finds_latest(self, project):
+        import time
+
+        _create_run(project, "run_old", [{"task": "design"}])
+        time.sleep(0.05)  # ensure different mtime
+        _create_run(project, "run_new", [{"task": "implement"}])
+        assert get_latest_run_id(project) == "run_new"
 
 
 class TestLoadConfig:

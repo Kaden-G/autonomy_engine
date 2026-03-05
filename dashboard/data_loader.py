@@ -46,6 +46,23 @@ def get_state_dir(project_dir: Path) -> Path:
 # -- Run Discovery -------------------------------------------------------
 
 
+def is_intake_complete(project_dir: Path) -> bool:
+    """Return True if all 5 required intake artifacts exist."""
+    return all(get_intake_status(project_dir).values())
+
+
+def get_latest_run_id(project_dir: Path) -> str | None:
+    """Return the most recently created run ID (by directory mtime)."""
+    runs_dir = get_state_dir(project_dir) / "runs"
+    if not runs_dir.is_dir():
+        return None
+    run_dirs = [d for d in runs_dir.iterdir() if d.is_dir()]
+    if not run_dirs:
+        return None
+    latest = max(run_dirs, key=lambda d: d.stat().st_mtime)
+    return latest.name
+
+
 def list_runs(project_dir: Path) -> list[dict]:
     """List all runs with basic metadata, sorted newest first."""
     runs_dir = get_state_dir(project_dir) / "runs"

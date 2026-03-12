@@ -39,6 +39,19 @@ venv/
 *.swp
 *.swo
 
+# Claude Code
+/.claude/
+CLAUDE_CODE_*.md
+
+# Exported docs (root only)
+/*.docx
+/*.html
+
+# Coverage
+htmlcov/
+.coverage
+coverage.xml
+
 # OS
 .DS_Store
 Thumbs.db

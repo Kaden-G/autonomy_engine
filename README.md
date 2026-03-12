@@ -1,5 +1,7 @@
 # Autonomy Engine v1.2
 
+![Tests](https://img.shields.io/badge/tests-337%20passing-brightgreen)
+
 A Prefect-based autonomous build engine with human-in-the-loop decision gates.
 
 ## What This Is For
@@ -59,6 +61,14 @@ The **extract** step parses `IMPLEMENTATION.md` for fenced code blocks marked wi
 bold filenames (`**path/to/file.ext**`) or header filenames (`### file.ext`), then
 writes each file to a sibling directory named after the project. No LLM call — pure
 regex parsing.
+
+## Quickstart
+
+```bash
+pip install -e ".[dev]"
+python -m intake.intake new-project
+python flows/autonomous_flow.py
+```
 
 ### Core Principles
 
@@ -338,6 +348,8 @@ engine/             Core modules (LLM provider, gates, state, tracing, notificat
   evidence.py       Structured command execution and evidence capture
   report.py         Audit bundle exporter (tar.gz with trace, evidence, integrity)
   notifier.py       Notification via Python logging (replace for real alerts)
+                    Notification adapter is designed for extension — replace
+                    engine/notifier.py to integrate Slack, email, or PagerDuty.
 flows/              Prefect flow definition — the entry point
 tasks/              Individual pipeline stages as Prefect tasks
 templates/          Gate policies and LLM prompt templates

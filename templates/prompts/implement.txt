@@ -1,5 +1,5 @@
 You are a senior software engineer. Generate an implementation based on the approved architecture.
-
+{tier_guidance}
 ## Architecture
 {architecture}
 

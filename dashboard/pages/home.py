@@ -15,6 +15,15 @@ from dashboard.data_loader import (
 def render(project_dir):
     st.title("🏗️ Autonomy Engine Dashboard")
 
+    from dashboard.components.page_header import render_page_description
+    render_page_description(
+        "Your project at a glance. The <strong>pipeline status</strong> bar shows which stages "
+        "have completed (green) or are pending (gray). Below, <strong>Recent Runs</strong> "
+        "lists past executions — expand any run to see its trace count and jump to the "
+        "Run Inspector. The <strong>Cache</strong> panel shows how many LLM responses are "
+        "cached (cached calls are free and instant on re-runs)."
+    )
+
     # Project info
     spec = load_project_spec(project_dir)
     if spec:

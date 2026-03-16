@@ -9,6 +9,16 @@ from dashboard.data_loader import get_cache_stats, list_benchmark_results
 def render(project_dir):
     st.title("📊 Benchmarks")
 
+    from dashboard.components.page_header import render_page_description
+    render_page_description(
+        "Track pipeline performance over time. The <strong>Summary</strong> shows wall time "
+        "and model call counts for a benchmark run. <strong>Per-Stage Timing</strong> breaks "
+        "down how long each stage takes (design, implement, etc.). "
+        "<strong>Cache Performance</strong> shows the hit rate — higher means more free re-runs. "
+        "Use <strong>Compare Two Results</strong> at the bottom to see how changes to your config "
+        "or prompts affect speed and cost across commits."
+    )
+
     results = list_benchmark_results(project_dir)
 
     if not results:

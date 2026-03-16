@@ -1,0 +1,61 @@
+You are a senior software engineer. Generate the implementation for ONE specific component of a larger system.
+{tier_guidance}
+## Full System Architecture (read-only context — do NOT implement everything)
+{architecture}
+
+## Requirements
+{requirements}
+
+## Constraints
+{constraints}
+
+## Component to Implement
+**Implement ONLY this component:** {component_name}
+
+{component_description}
+
+## Files Already Implemented (by previous chunks)
+{existing_files}
+
+## Type Contracts (from previous chunks — DO NOT redefine these)
+The following types, interfaces, enums, and classes have already been defined by
+previous chunks. You MUST import and use these exact definitions. Do NOT create
+new types with the same name or purpose. If you need a type that is similar,
+import the existing one and extend it.
+
+```
+{type_contracts}
+```
+
+## Instructions
+- Implement ONLY the component specified above. Do not produce files for other components.
+- You may import from or reference files in the "already implemented" list, but do not redefine them.
+- **CRITICAL**: Use the exact types from the "Type Contracts" section above. Import them from the listed file paths. Do NOT redefine interfaces, types, enums, or error classes that already exist.
+- Follow the architecture exactly. Do not deviate from approved design decisions.
+- Include all files needed for this component: source code, configs, types, and tests.
+- Mark any sections where you made minor implementation choices with `<!-- IMPL_CHOICE: reason -->`.
+
+## File Manifest (REQUIRED)
+
+After all Markdown content, you MUST append a JSON manifest listing every file you produced.
+Place it between the exact marker comments shown below.
+
+<!-- FILE_MANIFEST_START -->
+```json
+{{
+  "files": [
+    {{
+      "path": "relative/path/to/file.py",
+      "content": "full file content here"
+    }}
+  ]
+}}
+```
+<!-- FILE_MANIFEST_END -->
+
+Rules for the manifest:
+- Every file in your implementation MUST appear in the manifest.
+- `path` is the relative path (e.g. `src/main.py`, `Dockerfile`, `.gitignore`).
+- `content` is the complete file content as a single JSON string (use `\n` for newlines).
+- Do NOT omit files — the manifest is the sole source of truth for automated extraction.
+- Do NOT include files from other components — only files for {component_name}.

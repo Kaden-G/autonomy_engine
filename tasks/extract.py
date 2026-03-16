@@ -1,6 +1,12 @@
-"""Extract task — load FILE_MANIFEST.json and write files to a standalone project folder."""
+"""Extract task — load FILE_MANIFEST.json and write files to a standalone project folder.
+
+Includes a file-count circuit breaker that halts extraction when the
+manifest contains an unreasonable number of files, which is a strong
+signal that the design/implement stages overscoped.
+"""
 
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -10,8 +16,20 @@ from prefect import task
 
 from engine.context import get_project_dir
 from engine.state_loader import load_state_file, save_state_file
+from engine.tier_context import is_mvp
 from engine.tracer import trace
 from tasks.manifest_schema import FileManifest
+
+logger = logging.getLogger(__name__)
+
+# ── Circuit breaker thresholds ───────────────────────────────────────────────
+# If the manifest exceeds these limits, extraction is halted.
+# The MVP limits are deliberately tight — a working MVP should be lean.
+
+_MAX_FILES_MVP = 60
+_MAX_FILES_PREMIUM = 250
+_MAX_TOTAL_BYTES_MVP = 500_000        # ~500 KB of source code
+_MAX_TOTAL_BYTES_PREMIUM = 5_000_000  # ~5 MB
 
 
 def _slugify(name: str) -> str:
@@ -74,6 +92,84 @@ def _safe_path(output_dir: Path, filepath: str) -> Path:
     return resolved
 
 
+class ExtractionCircuitBreaker(RuntimeError):
+    """Raised when the manifest exceeds safe extraction limits.
+
+    Attributes:
+        file_count: Number of files in the manifest.
+        total_bytes: Total content size in bytes.
+        limit_files: The file count limit that was exceeded.
+        limit_bytes: The byte size limit that was exceeded.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        file_count: int,
+        total_bytes: int,
+        limit_files: int,
+        limit_bytes: int,
+    ):
+        super().__init__(message)
+        self.file_count = file_count
+        self.total_bytes = total_bytes
+        self.limit_files = limit_files
+        self.limit_bytes = limit_bytes
+
+
+def _check_extraction_limits(manifest: FileManifest) -> None:
+    """Halt extraction if the manifest exceeds safe limits.
+
+    Raises :class:`ExtractionCircuitBreaker` with a descriptive message
+    explaining what was exceeded and suggesting remediation.
+    """
+    mvp = is_mvp()
+    max_files = _MAX_FILES_MVP if mvp else _MAX_FILES_PREMIUM
+    max_bytes = _MAX_TOTAL_BYTES_MVP if mvp else _MAX_TOTAL_BYTES_PREMIUM
+    tier_label = "MVP" if mvp else "Premium"
+
+    file_count = len(manifest.files)
+    total_bytes = sum(len(entry.content.encode("utf-8")) for entry in manifest.files)
+
+    violations: list[str] = []
+    if file_count > max_files:
+        violations.append(
+            f"File count ({file_count}) exceeds {tier_label} limit of {max_files}"
+        )
+    if total_bytes > max_bytes:
+        violations.append(
+            f"Total size ({total_bytes:,} bytes) exceeds {tier_label} "
+            f"limit of {max_bytes:,} bytes"
+        )
+
+    if violations:
+        msg = (
+            f"Extraction circuit breaker tripped ({tier_label} tier):\n"
+            + "\n".join(f"  - {v}" for v in violations)
+            + "\n\nThis usually means the design stage overscoped the architecture. "
+            "Consider:\n"
+            "  1. Re-running with MVP tier to get tier-aware scope constraints\n"
+            "  2. Reducing features in the project spec\n"
+            "  3. Increasing the limits in tasks/extract.py if this project "
+            "genuinely needs more files"
+        )
+        logger.error("Circuit breaker: %s", msg)
+        raise ExtractionCircuitBreaker(
+            msg,
+            file_count=file_count,
+            total_bytes=total_bytes,
+            limit_files=max_files,
+            limit_bytes=max_bytes,
+        )
+
+    logger.info(
+        "Extraction limits check passed (%s tier): %d files, %s bytes "
+        "(limits: %d files, %s bytes).",
+        tier_label, file_count, f"{total_bytes:,}",
+        max_files, f"{max_bytes:,}",
+    )
+
+
 def _build_manifest(extracted_files: list[str], output_dir: Path) -> str:
     """Generate a markdown manifest listing all extracted files."""
     lines = [
@@ -97,6 +193,9 @@ def extract_project() -> None:
     # Load manifest JSON
     raw_json = load_state_file("implementations/FILE_MANIFEST.json")
     manifest = _load_and_validate_manifest(raw_json)
+
+    # Circuit breaker — halt if manifest is unreasonably large
+    _check_extraction_limits(manifest)
 
     # Load project spec to get the project name
     spec_raw = load_state_file("inputs/project_spec.yml")

@@ -81,8 +81,22 @@ def _handle_gate(task_fn, stage: str) -> None:
 
 # ── Main pipeline ────────────────────────────────────────────────────────────
 
-def run_pipeline(project_dir: str) -> None:
-    """Execute the full build pipeline without Prefect orchestration."""
+def run_pipeline(
+    project_dir: str,
+    skip_estimate: bool = False,
+    tier_name: str | None = None,
+) -> None:
+    """Execute the full build pipeline without Prefect orchestration.
+
+    *tier_name* can be ``"premium"`` or ``"mvp"``.  When provided the
+    cost estimate is computed silently and the matching tier budgets are
+    applied — no interactive prompt.  When omitted (and *skip_estimate*
+    is False) the user is prompted interactively on stdin.
+    """
+    from engine.cost_estimator import (
+        TierName, build_tiers, estimate_run, prompt_tier_selection,
+    )
+    from engine.llm_provider import set_stage_token_overrides
     from engine.notifier import notify
     from tasks.bootstrap import bootstrap_project
     from tasks.design import design_system
@@ -93,6 +107,30 @@ def run_pipeline(project_dir: str) -> None:
 
     init_context(project_dir)
     _verify_intake()
+
+    # ── Cost estimate + tier selection ──────────────────────────────────
+    if not skip_estimate:
+        estimate = estimate_run(project_dir)
+
+        if tier_name:
+            # Non-interactive: tier passed via CLI (e.g. from Streamlit UI)
+            selected_tier_name = TierName(tier_name)
+            tiers = build_tiers(estimate)
+            tier = tiers[selected_tier_name]
+        else:
+            # Interactive: prompt on stdin (terminal usage)
+            tier = prompt_tier_selection(estimate)
+
+        set_stage_token_overrides(tier.max_tokens_per_stage)
+
+        from engine.tier_context import set_tier
+        set_tier(tier.name.value)
+
+        logger.info(
+            "Tier '%s' selected — estimated cost $%.4f",
+            tier.name.value, tier.estimated_cost_usd,
+        )
+
     run_id = init_run()
     logger.info("Run %s started (dashboard mode).", run_id)
 
@@ -121,9 +159,21 @@ def run_pipeline(project_dir: str) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run pipeline without Prefect")
     parser.add_argument("--project-dir", required=True)
+    parser.add_argument(
+        "--tier", choices=["premium", "mvp"], default=None,
+        help="Select build tier (premium or mvp). Skips interactive prompt.",
+    )
+    parser.add_argument(
+        "--skip-estimate", action="store_true",
+        help="Skip cost estimate and tier selection entirely (use config defaults)",
+    )
     args = parser.parse_args()
     try:
-        run_pipeline(args.project_dir)
+        run_pipeline(
+            args.project_dir,
+            skip_estimate=args.skip_estimate,
+            tier_name=args.tier,
+        )
     except Exception:
         logger.exception("Pipeline failed")
         sys.exit(1)

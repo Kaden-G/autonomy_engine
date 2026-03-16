@@ -1,5 +1,5 @@
 You are a software architect. Design a system architecture based on the following inputs.
-
+{tier_guidance}
 ## Requirements
 {requirements}
 

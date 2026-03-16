@@ -2,10 +2,15 @@
 
 Only pre-configured commands from ``config.yml`` are executed.
 The LLM never controls which shell commands run.
+
+When ``checks`` is empty, :func:`auto_detect_checks` can inspect the
+extracted project directory for ``package.json`` or ``pyproject.toml``
+and return a reasonable set of smoke-test commands.
 """
 
 import hashlib
 import json
+import logging
 import shlex
 import subprocess
 from datetime import datetime, timezone
@@ -15,6 +20,8 @@ import yaml
 
 from engine.context import get_config_path, get_state_dir
 from engine.tracer import get_run_id
+
+logger = logging.getLogger(__name__)
 
 
 # ── Evidence directory ───────────────────────────────────────────────────────
@@ -45,6 +52,127 @@ def load_configured_checks() -> list[dict]:
         config = yaml.safe_load(f) or {}
 
     return config.get("checks") or []
+
+
+# ── Auto-detection ───────────────────────────────────────────────────────────
+
+
+def auto_detect_checks(project_dir: Path) -> list[dict]:
+    """Inspect *project_dir* for package.json / pyproject.toml and return checks.
+
+    This is a **fallback** — only called when the user hasn't configured
+    explicit ``checks`` in ``config.yml``.  The commands returned are
+    conservative smoke tests (install deps, type-check, build, test).
+
+    Returns an empty list if no recognisable project files are found.
+    """
+    checks: list[dict] = []
+
+    # ── Node.js / TypeScript projects ────────────────────────────────────
+    pkg_json_path = project_dir / "package.json"
+    if pkg_json_path.exists():
+        try:
+            pkg = json.loads(pkg_json_path.read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Failed to parse %s: %s", pkg_json_path, exc)
+            pkg = {}
+
+        # Always install deps first — almost everything else depends on it
+        checks.append({"name": "install", "command": "npm install"})
+
+        scripts = pkg.get("scripts", {})
+
+        # TypeScript type-check (catches the most bugs for the cost)
+        if "typecheck" in scripts:
+            checks.append({"name": "typecheck", "command": "npm run typecheck"})
+        elif _has_ts_dependency(pkg):
+            # No script, but typescript is a dep — run tsc directly
+            checks.append({"name": "typecheck", "command": "npx tsc --noEmit"})
+
+        # Build
+        if "build" in scripts:
+            checks.append({"name": "build", "command": "npm run build"})
+
+        # Lint
+        if "lint" in scripts:
+            checks.append({"name": "lint", "command": "npm run lint"})
+
+        # Test
+        if "test" in scripts:
+            # Skip if test script is the default CRA "react-scripts test"
+            # which hangs in CI (requires --watchAll=false)
+            test_cmd = scripts["test"]
+            if "react-scripts test" in test_cmd:
+                checks.append(
+                    {"name": "test", "command": "npx react-scripts test --watchAll=false"}
+                )
+            else:
+                checks.append({"name": "test", "command": "npm test"})
+
+        logger.info(
+            "Auto-detected %d check(s) from package.json: %s",
+            len(checks),
+            [c["name"] for c in checks],
+        )
+        return checks
+
+    # ── Python projects ──────────────────────────────────────────────────
+    pyproject_path = project_dir / "pyproject.toml"
+    requirements_path = project_dir / "requirements.txt"
+    setup_path = project_dir / "setup.py"
+
+    is_python = pyproject_path.exists() or requirements_path.exists() or setup_path.exists()
+
+    if is_python:
+        # Install dependencies
+        if requirements_path.exists():
+            checks.append(
+                {"name": "install", "command": "pip install -r requirements.txt"}
+            )
+        elif pyproject_path.exists():
+            checks.append({"name": "install", "command": "pip install -e ."})
+        elif setup_path.exists():
+            checks.append({"name": "install", "command": "pip install -e ."})
+
+        # Read pyproject.toml for tool configs
+        pyproject_text = ""
+        if pyproject_path.exists():
+            try:
+                pyproject_text = pyproject_path.read_text()
+            except OSError:
+                pass
+
+        # pytest
+        if "[tool.pytest" in pyproject_text or (project_dir / "pytest.ini").exists():
+            checks.append({"name": "test", "command": "python -m pytest"})
+        elif (project_dir / "tests").is_dir():
+            checks.append({"name": "test", "command": "python -m pytest"})
+
+        # ruff
+        if "[tool.ruff" in pyproject_text:
+            checks.append({"name": "lint", "command": "python -m ruff check ."})
+
+        # mypy
+        if "[tool.mypy" in pyproject_text:
+            checks.append({"name": "typecheck", "command": "python -m mypy ."})
+
+        logger.info(
+            "Auto-detected %d check(s) from Python project: %s",
+            len(checks),
+            [c["name"] for c in checks],
+        )
+        return checks
+
+    logger.info("No package.json or Python project files found — no checks to auto-detect.")
+    return []
+
+
+def _has_ts_dependency(pkg: dict) -> bool:
+    """Return True if ``typescript`` appears in any dependency group."""
+    for key in ("dependencies", "devDependencies", "peerDependencies"):
+        if "typescript" in (pkg.get(key) or {}):
+            return True
+    return False
 
 
 # ── Command execution ────────────────────────────────────────────────────────

@@ -12,6 +12,6 @@ gates:
     default_option: "continue"
     description: "Triage when test failures detected"
   verify:
-    policy: "skip"
-    default_option: "accept"
-    description: "Review when verification outputs REJECTED"
+    policy: "pause"
+    default_option: null
+    description: "Review when verification outputs REJECTED — blocks pipeline for human decision"

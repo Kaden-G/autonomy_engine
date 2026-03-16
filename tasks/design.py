@@ -7,6 +7,7 @@ from engine.context import get_prompts_dir
 from engine.decision_gates import DecisionRequired, decision_exists, load_decision
 from engine.llm_provider import get_provider
 from engine.state_loader import load_state_file, save_state_file
+from engine.tier_context import get_design_guidance
 from engine.tracer import hash_prompt, trace
 
 
@@ -27,12 +28,15 @@ def design_system() -> None:
     else:
         extra_context = ""
 
+    tier_guidance = get_design_guidance()
+
     prompt_template = (get_prompts_dir() / "design.txt").read_text()
     prompt = prompt_template.format(
         requirements=requirements,
         constraints=constraints,
         non_goals=non_goals,
         extra_context=extra_context,
+        tier_guidance=tier_guidance,
     )
 
     provider = get_provider(stage="design")
@@ -40,7 +44,7 @@ def design_system() -> None:
 
     # Cache lookup
     template_hash = hash_content(prompt_template)
-    envelope_hash = hash_content(requirements + constraints + non_goals + extra_context)
+    envelope_hash = hash_content(requirements + constraints + non_goals + extra_context + tier_guidance)
     params_h = hash_params(provider.model, provider.max_tokens)
     cache_key = build_cache_key("design", template_hash, envelope_hash, provider.model, params_h)
 

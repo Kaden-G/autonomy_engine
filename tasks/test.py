@@ -15,6 +15,7 @@ from prefect import task
 from engine.context import get_project_dir
 from engine.decision_gates import DecisionRequired, decision_exists, load_decision
 from engine.evidence import (
+    auto_detect_checks,
     load_all_evidence,
     load_configured_checks,
     no_checks_record,
@@ -178,11 +179,20 @@ def test_system() -> None:
     checks = load_configured_checks()
     run_id = get_run_id()
 
+    # Auto-detect checks from the extracted project when none are configured
+    auto_detected = False
+    if not checks:
+        project_dir = _get_project_dir()
+        checks = auto_detect_checks(project_dir)
+        if checks:
+            auto_detected = True
+
     sandbox_meta: dict = {}
     if not checks:
         save_evidence(no_checks_record())
     else:
-        project_dir = _get_project_dir()
+        if not auto_detected:
+            project_dir = _get_project_dir()
         sandbox_cfg = load_sandbox_config()
         use_sandbox = sandbox_cfg.get("enabled", True)
 
@@ -198,17 +208,22 @@ def test_system() -> None:
     save_state_file(output_path, summary)
 
     evidence_rel = [f"runs/{run_id}/evidence/{r['name']}.json" for r in evidence]
+    extra = {}
+    if sandbox_meta:
+        extra.update({
+            "sandbox_venv_cache_hit": sandbox_meta.get("venv_cache_hit"),
+            "sandbox_venv_create_time_s": sandbox_meta.get("venv_create_time_s"),
+            "sandbox_deps_install_time_s": sandbox_meta.get("deps_install_time_s"),
+        })
+    if auto_detected:
+        extra["checks_auto_detected"] = True
+        extra["auto_detected_checks"] = [c["name"] for c in checks]
+
     trace(
         task="test",
         inputs=["implementations/IMPLEMENTATION.md"],
         outputs=[output_path] + evidence_rel,
-        extra={
-            "sandbox_venv_cache_hit": sandbox_meta.get("venv_cache_hit"),
-            "sandbox_venv_create_time_s": sandbox_meta.get("venv_create_time_s"),
-            "sandbox_deps_install_time_s": sandbox_meta.get("deps_install_time_s"),
-        }
-        if sandbox_meta
-        else None,
+        extra=extra or None,
     )
 
     # Gate trigger: raise if failures detected and no decision recorded yet

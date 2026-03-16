@@ -9,6 +9,16 @@ from dashboard.data_loader import load_config, load_gate_policies
 def render(project_dir):
     st.title("⚙️ Configuration")
 
+    from dashboard.components.page_header import render_page_description
+    render_page_description(
+        "View the active settings for this project. <strong>LLM Provider</strong> shows which "
+        "model and token budget each stage uses. <strong>Decision Gate Policies</strong> control "
+        "what happens at review points (auto-approve, pause for human input, or skip). "
+        "<strong>Verify Settings</strong> determines when the LLM is called for the final verdict. "
+        "<strong>Sandbox</strong> controls test isolation. To change settings, edit "
+        "<code>config.yml</code> directly — changes take effect on the next run."
+    )
+
     config = load_config(project_dir)
     if not config:
         st.warning("No config.yml found.")

@@ -1,0 +1,25 @@
+You are a software architect planning an implementation in manageable chunks.
+
+## Architecture
+{architecture}
+
+## Instructions
+Split this architecture into implementation chunks that can be built independently.
+Each chunk should be a coherent component or layer that produces a self-contained set of files.
+
+Rules:
+- Order chunks so dependencies are built first (e.g. data models before services, services before UI)
+- Each chunk should produce roughly 3-10 files
+- Shared types, configs, and project scaffolding should be in the FIRST chunk
+- Keep chunks small enough that a single LLM call can produce all files with full content
+
+Output ONLY a JSON array. No markdown, no explanation:
+
+```json
+[
+  {{
+    "name": "Short component name",
+    "description": "What this chunk implements and what files it should produce"
+  }}
+]
+```

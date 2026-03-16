@@ -287,7 +287,11 @@ class TestGetGatePolicy:
         gates_file = templates / "DECISION_GATES.yml"
         gates_file.write_text(yaml.dump({"gates": {"design": {"policy": "pause"}}}))
         engine.context.init(tmp_path)
+        # verify defaults to "pause" (not in YAML, falls back to _DEFAULT_POLICIES)
         policy = get_gate_policy("verify")
+        assert policy.policy == "pause"
+        # unknown stages still default to "skip"
+        policy = get_gate_policy("unknown_stage")
         assert policy.policy == "skip"
 
     def test_malformed_yaml_falls_back(self, tmp_path):

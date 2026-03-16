@@ -1,12 +1,14 @@
 """Sandbox — isolated temporary workspace for running verification commands.
 
-Copies the generated project into a temp directory, creates a
-virtualenv, optionally installs dependencies, and cleans up after.
+Copies the generated project into a temp directory, sets up the
+appropriate runtime (Python virtualenv or Node.js node_modules),
+optionally installs dependencies, and cleans up after.
 Host files are never modified by sandboxed execution.
 """
 
 import hashlib
 import json
+import logging
 import os
 import platform
 import shutil
@@ -21,6 +23,8 @@ from typing import Iterator
 import yaml
 
 from engine.context import get_config_path, get_state_dir
+
+logger = logging.getLogger(__name__)
 
 
 # ── Config ───────────────────────────────────────────────────────────────────
@@ -55,10 +59,10 @@ def collect_host_metadata() -> dict:
 
 
 class Sandbox:
-    """An isolated workspace with its own virtualenv.
+    """An isolated workspace with its own virtualenv or node_modules.
 
     Created by :func:`create_sandbox`.  Use ``env`` when calling
-    ``subprocess.run`` so the sandboxed Python/pip are on ``PATH``.
+    ``subprocess.run`` so the sandboxed runtime is on ``PATH``.
     """
 
     def __init__(
@@ -66,16 +70,22 @@ class Sandbox:
         workspace: Path,
         venv_path: Path | None,
         deps_installed: bool,
+        project_type: str = "python",
     ):
         self.workspace = workspace
         self.venv_path = venv_path
         self._deps_installed = deps_installed
+        self.project_type = project_type
 
     @property
     def env(self) -> dict:
-        """Return a copy of ``os.environ`` with the venv activated."""
+        """Return a copy of ``os.environ`` with the sandbox runtime activated."""
         env = os.environ.copy()
-        if self.venv_path:
+        if self.project_type == "node":
+            # Add node_modules/.bin to PATH for npx-style tool access
+            node_bin = str(self.workspace / "node_modules" / ".bin")
+            env["PATH"] = node_bin + os.pathsep + env.get("PATH", "")
+        elif self.venv_path:
             venv_bin = str(self.venv_path / "bin")
             env["PATH"] = venv_bin + os.pathsep + env.get("PATH", "")
             env["VIRTUAL_ENV"] = str(self.venv_path)
@@ -87,17 +97,44 @@ class Sandbox:
         meta = {
             "sandboxed": True,
             "workspace": str(self.workspace),
-            "python_version": platform.python_version(),
+            "project_type": self.project_type,
             "platform": platform.platform(),
-            "venv": str(self.venv_path) if self.venv_path else None,
             "deps_installed": self._deps_installed,
         }
+        if self.project_type == "node":
+            node_ver = _find_node_version(self.workspace)
+            if node_ver:
+                meta["node_version"] = node_ver
+        else:
+            meta["python_version"] = platform.python_version()
+            meta["venv"] = str(self.venv_path) if self.venv_path else None
+
         if hasattr(self, "_venv_cache_hit"):
             meta["venv_cache_hit"] = self._venv_cache_hit
             meta["venv_cache_key"] = self._venv_cache_key
             meta["venv_create_time_s"] = self._venv_create_time
             meta["deps_install_time_s"] = self._deps_install_time
         return meta
+
+
+# ── Project type detection ────────────────────────────────────────────────────
+
+
+def detect_project_type(workspace: Path) -> str:
+    """Detect the project runtime from files in *workspace*.
+
+    Returns ``"node"``, ``"python"``, or ``"unknown"``.
+    ``package.json`` takes precedence when both Node and Python files exist
+    (same priority rule as ``auto_detect_checks``).
+    """
+    if (workspace / "package.json").exists():
+        return "node"
+    if any(
+        (workspace / f).exists()
+        for f in ("requirements.txt", "pyproject.toml", "setup.py")
+    ):
+        return "python"
+    return "unknown"
 
 
 # ── Internal helpers ─────────────────────────────────────────────────────────
@@ -158,6 +195,59 @@ def _install_deps(workspace: Path, venv_path: Path) -> bool:
         return True
     except (subprocess.SubprocessError, OSError):
         return False
+
+
+def _install_node_deps(workspace: Path, sandbox_cfg: dict) -> bool:
+    """Install Node.js dependencies via ``npm install`` in *workspace*.
+
+    Uses a shared npm cache to speed up repeated installs.
+    Returns ``True`` if installation succeeded.
+    """
+    pkg = workspace / "package.json"
+    if not pkg.exists():
+        return False
+
+    npm_cache_dir = str(get_state_dir() / "sandbox_cache" / "npm")
+    env = os.environ.copy()
+    env["npm_config_cache"] = npm_cache_dir
+
+    try:
+        subprocess.run(
+            ["npm", "install", "--no-audit", "--no-fund"],
+            capture_output=True,
+            text=True,
+            timeout=180,  # npm can be slow
+            check=True,
+            cwd=str(workspace),
+            env=env,
+        )
+        return True
+    except FileNotFoundError:
+        logger.warning(
+            "npm not found on PATH — cannot install Node.js dependencies. "
+            "Install Node.js (https://nodejs.org) to enable Node.js sandbox support."
+        )
+        return False
+    except (subprocess.SubprocessError, OSError) as exc:
+        logger.warning("npm install failed: %s", exc)
+        return False
+
+
+def _find_node_version(workspace: Path) -> str | None:
+    """Return the Node.js version string, or None if not available."""
+    try:
+        result = subprocess.run(
+            ["node", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(workspace),
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.SubprocessError):
+        pass
+    return None
 
 
 # ── Venv caching ────────────────────────────────────────────────────────────
@@ -227,11 +317,14 @@ def create_sandbox(
     install_deps: bool = True,
     sandbox_cfg: dict | None = None,
 ) -> Iterator[Sandbox]:
-    """Copy *project_dir* into a temp workspace with its own virtualenv.
+    """Copy *project_dir* into a temp workspace with the appropriate runtime.
+
+    Detects project type (Node.js or Python) and sets up either
+    ``node_modules`` or a virtualenv accordingly.
 
     If a cached venv exists for the same dependency spec, reuse it.
     Yields a :class:`Sandbox` whose ``.workspace`` is the isolated copy
-    and whose ``.env`` activates the virtualenv.  The temp directory is
+    and whose ``.env`` activates the runtime.  The temp directory is
     deleted when the context manager exits.
     """
     tmpdir = tempfile.mkdtemp(prefix="ae_sandbox_")
@@ -240,45 +333,82 @@ def create_sandbox(
     try:
         shutil.copytree(project_dir, workspace)
 
-        venv_cache_hit = False
-        venv_create_time = 0.0
-        deps_install_time = 0.0
-        deps_installed = False
-
         cfg = sandbox_cfg or {}
-        cache_key = _compute_venv_cache_key(workspace, cfg)
+        project_type = detect_project_type(workspace)
+        logger.info("Sandbox project type detected: %s", project_type)
 
-        # Try reuse cached venv
-        t0 = _time.monotonic()
-        venv_path, venv_cache_hit = _try_reuse_venv(cache_key, workspace)
-        if venv_cache_hit:
-            venv_create_time = _time.monotonic() - t0
-            deps_installed = True
+        if project_type == "node":
+            sb = _setup_node_sandbox(workspace, install_deps, cfg)
         else:
-            # Create fresh venv
-            t0 = _time.monotonic()
-            venv_path = _create_venv(workspace)
-            venv_create_time = _time.monotonic() - t0
-
-            if venv_path and install_deps:
-                t1 = _time.monotonic()
-                deps_installed = _install_deps(workspace, venv_path)
-                deps_install_time = _time.monotonic() - t1
-
-            # Cache the venv after creation (with or without deps)
-            if venv_path:
-                _save_venv_to_cache(cache_key, venv_path)
-
-        sb = Sandbox(
-            workspace=workspace,
-            venv_path=venv_path,
-            deps_installed=deps_installed,
-        )
-        sb._venv_cache_hit = venv_cache_hit
-        sb._venv_cache_key = cache_key
-        sb._venv_create_time = round(venv_create_time, 3)
-        sb._deps_install_time = round(deps_install_time, 3)
+            sb = _setup_python_sandbox(workspace, install_deps, cfg)
 
         yield sb
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def _setup_node_sandbox(
+    workspace: Path, install_deps: bool, cfg: dict,
+) -> Sandbox:
+    """Set up a Node.js sandbox — npm install in the workspace."""
+    deps_installed = False
+    deps_install_time = 0.0
+
+    if install_deps:
+        t0 = _time.monotonic()
+        deps_installed = _install_node_deps(workspace, cfg)
+        deps_install_time = _time.monotonic() - t0
+
+    sb = Sandbox(
+        workspace=workspace,
+        venv_path=None,
+        deps_installed=deps_installed,
+        project_type="node",
+    )
+    sb._deps_install_time = round(deps_install_time, 3)
+    return sb
+
+
+def _setup_python_sandbox(
+    workspace: Path, install_deps: bool, cfg: dict,
+) -> Sandbox:
+    """Set up a Python sandbox — virtualenv + pip install."""
+    venv_cache_hit = False
+    venv_create_time = 0.0
+    deps_install_time = 0.0
+    deps_installed = False
+
+    cache_key = _compute_venv_cache_key(workspace, cfg)
+
+    # Try reuse cached venv
+    t0 = _time.monotonic()
+    venv_path, venv_cache_hit = _try_reuse_venv(cache_key, workspace)
+    if venv_cache_hit:
+        venv_create_time = _time.monotonic() - t0
+        deps_installed = True
+    else:
+        # Create fresh venv
+        t0 = _time.monotonic()
+        venv_path = _create_venv(workspace)
+        venv_create_time = _time.monotonic() - t0
+
+        if venv_path and install_deps:
+            t1 = _time.monotonic()
+            deps_installed = _install_deps(workspace, venv_path)
+            deps_install_time = _time.monotonic() - t1
+
+        # Cache the venv after creation (with or without deps)
+        if venv_path:
+            _save_venv_to_cache(cache_key, venv_path)
+
+    sb = Sandbox(
+        workspace=workspace,
+        venv_path=venv_path,
+        deps_installed=deps_installed,
+        project_type="python",
+    )
+    sb._venv_cache_hit = venv_cache_hit
+    sb._venv_cache_key = cache_key
+    sb._venv_create_time = round(venv_create_time, 3)
+    sb._deps_install_time = round(deps_install_time, 3)
+    return sb

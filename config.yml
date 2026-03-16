@@ -1,6 +1,12 @@
 llm:
   provider: "claude"  # "claude" or "openai"
-  max_tokens: 16384   # max output tokens per LLM call
+
+  # Budget cap — the *most* output tokens any single LLM call may request.
+  # The engine will automatically clamp this to the model's hard limit if
+  # you set it higher, so you'll never get a 400 error.  Set it *lower*
+  # than the model max to control cost (e.g. 8192 for cheap iteration).
+  max_tokens: 16384
+
   claude:
     model: "claude-sonnet-4-20250514"
   openai:

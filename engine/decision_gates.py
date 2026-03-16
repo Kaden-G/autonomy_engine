@@ -189,7 +189,7 @@ _DEFAULT_POLICIES = {
     "design": "pause",
     "implement": "skip",
     "test": "skip",
-    "verify": "skip",
+    "verify": "pause",
 }
 
 

@@ -21,6 +21,16 @@ from dashboard.data_loader import (
 def render(project_dir):
     st.title("🔍 Run Inspector")
 
+    from dashboard.components.page_header import render_page_description
+    render_page_description(
+        "Deep-dive into a single pipeline run. Select a run from the dropdown, then explore "
+        "five tabs: <strong>Trace Timeline</strong> shows every step the engine took (with model, "
+        "cache hits, and timing). <strong>Evidence</strong> displays test results with exit codes "
+        "and output. <strong>Decisions</strong> shows any gate choices made during the run. "
+        "<strong>Artifacts</strong> lets you read the generated architecture, implementation, "
+        "and verification docs. <strong>Config Snapshot</strong> shows the exact settings used."
+    )
+
     # Run selector
     runs = list_runs(project_dir)
     if not runs:

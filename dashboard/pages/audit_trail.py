@@ -13,9 +13,15 @@ from dashboard.data_loader import (
 
 def render(project_dir):
     st.title("🔒 Audit Trail")
-    st.markdown(
-        "Every trace entry is cryptographically chained to the previous entry via SHA-256. "
-        "If any entry is modified, inserted, or deleted, the chain breaks and tampering is detected."
+
+    from dashboard.components.page_header import render_page_description
+    render_page_description(
+        "Verify the integrity of any pipeline run. Every trace entry is cryptographically "
+        "chained to the previous one via SHA-256 — if any entry is modified, inserted, or "
+        "deleted, the chain breaks. The <strong>Integrity Verification</strong> section shows "
+        "a pass/fail check. Below that, the <strong>Hash Chain Visualization</strong> displays "
+        "each entry's hash linked to the previous one (green = valid link, red = break). "
+        "Use <strong>Export</strong> at the bottom to download the raw trace or a signed audit report."
     )
 
     runs = list_runs(project_dir)

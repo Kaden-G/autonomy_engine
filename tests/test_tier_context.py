@@ -65,8 +65,8 @@ class TestDesignGuidance:
         set_tier("mvp")
         guidance = get_design_guidance()
         assert "MVP" in guidance
-        assert "Fewer components" in guidance
-        assert "15-30 total files" in guidance
+        assert "5 components" in guidance
+        assert "40 total files" in guidance
 
     def test_premium_returns_empty(self):
         set_tier("premium")

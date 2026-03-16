@@ -46,48 +46,62 @@ def reset() -> None:
 # ── LLM-facing guidance text ────────────────────────────────────────────────
 
 _MVP_DESIGN_GUIDANCE = """\
-## Scope Constraint: MVP Tier
+## MANDATORY Scope Constraint: MVP Tier
 
-You are designing for an **MVP (Minimum Viable Product)** build. This means:
+⚠️  **HARD LIMITS — your design WILL BE REJECTED if it exceeds these:**
+- **Maximum 5 components/modules.** Not 6, not 8, not 10. Five or fewer.
+- **Maximum 40 total files** across all components combined.
+- **No component should contain more than 10 files.**
 
-1. **Fewer components** — aim for 3-5 core modules, not 8-12. Combine related
-   concerns into single files where reasonable.
-2. **Happy-path only** — skip advanced error handling, retry logic, and edge
-   cases. Basic try/catch is fine; custom error hierarchies are not.
-3. **No ancillary infrastructure** — omit Docker, CI/CD, monitoring, logging
-   frameworks, and deployment configs. Focus on the application code.
-4. **Simplest viable technology** — prefer built-in/standard-library solutions
-   over third-party libraries when the difference is small. For example, use
-   ``localStorage`` instead of IndexedDB+Dexie if the data model is simple.
-5. **Flat or minimal directory structure** — avoid deep nesting. A flat
-   ``src/`` with a few files is better than ``src/features/*/components/``.
-6. **Skip optional features** — if the spec lists features as "nice to have"
-   or there are features that are clearly secondary to the core value
-   proposition, omit them entirely. Focus on the 2-3 features that make the
-   product useful.
-7. **Target ~15-30 total files** — this is a hard guideline. If your design
-   would require more, simplify the architecture.
+You are designing for an **MVP (Minimum Viable Product)** build. These
+constraints are enforced by an automated circuit breaker that will halt the
+build if your design is too large. Design small or the build fails.
 
-The implementation budget is constrained, so a simpler design that can be
-fully implemented is far more valuable than an ambitious design that gets
-truncated mid-file.
+**Rules:**
+
+1. **3-5 components MAXIMUM** — aggressively merge related concerns. Combine
+   types, utils, and config into the modules that use them. A "Database" module
+   and an "API" module should be ONE module if they share types.
+2. **Happy-path only** — skip error handling beyond basic try/catch. No custom
+   error hierarchies, retry logic, or graceful degradation.
+3. **No infrastructure** — zero Docker, CI/CD, monitoring, logging frameworks,
+   or deployment configs. Application code only.
+4. **Simplest viable technology** — ``localStorage`` over IndexedDB, built-in
+   ``fetch`` over axios, CSS modules over styled-components.
+5. **Flat structure** — ``src/`` with files directly in it. No
+   ``src/features/auth/components/forms/`` nesting.
+6. **Ruthlessly cut features** — implement only the 2-3 features that define
+   the core value proposition. Everything else is cut, not deferred.
+7. **Combine aggressively** — one React component file can contain multiple
+   small components. One module file can export multiple related functions.
+   Prefer 5 files of 200 lines over 20 files of 50 lines.
+
+**Before finalizing, count your components and estimated files. If you have
+more than 5 components or more than 40 files, simplify until you are under
+both limits.**
 """
 
 _MVP_IMPLEMENT_GUIDANCE = """\
-## Scope Constraint: MVP Tier
+## MANDATORY Scope Constraint: MVP Tier
 
-This is an **MVP build**. Your implementation budget is limited. Prioritize:
+⚠️  **HARD LIMIT: produce NO MORE THAN 10 files in this chunk.** The build
+will be rejected by an automated circuit breaker if the total project
+exceeds 40 files or 750 KB. Every extra file counts against the budget.
 
-1. **Complete, compilable files** over comprehensive features. A working app
-   with 3 features beats a broken app with 8 features.
-2. **Fewer, larger files** — combine related logic instead of splitting across
-   many small modules. Avoid creating files with only 5-10 lines.
-3. **Skip tests, docs, and config files** — focus purely on application code.
-   The pipeline handles testing separately.
-4. **Inline simple utilities** — don't create separate utility/helper files
-   for functions used only once.
-5. **Use defaults** — hardcode reasonable defaults instead of building
-   configuration systems.
+**Rules:**
+
+1. **Complete, compilable files** — a working app with 3 features beats a
+   broken app with 8. If you run low on budget, finish fewer files well.
+2. **Fewer, LARGER files** — combine related logic. Put multiple React
+   components in one file. Merge types/interfaces into the module that uses
+   them. Never create a file with fewer than 20 lines.
+3. **Zero tests, docs, or config** — no test files, no README, no .env.example,
+   no tsconfig.json unless strictly required for compilation. The pipeline
+   handles testing separately.
+4. **Inline everything used once** — no utils.ts, no helpers.ts, no constants.ts
+   unless multiple files import from them.
+5. **Hardcode defaults** — no config systems, no environment variable parsing,
+   no settings files.
 """
 
 _PREMIUM_GUIDANCE = ""  # Premium gets no constraint — full scope is intended.

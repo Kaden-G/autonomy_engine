@@ -26,9 +26,9 @@ logger = logging.getLogger(__name__)
 # If the manifest exceeds these limits, extraction is halted.
 # The MVP limits are deliberately tight — a working MVP should be lean.
 
-_MAX_FILES_MVP = 60
+_MAX_FILES_MVP = 80
 _MAX_FILES_PREMIUM = 250
-_MAX_TOTAL_BYTES_MVP = 500_000        # ~500 KB of source code
+_MAX_TOTAL_BYTES_MVP = 750_000        # ~750 KB of source code
 _MAX_TOTAL_BYTES_PREMIUM = 5_000_000  # ~5 MB
 
 

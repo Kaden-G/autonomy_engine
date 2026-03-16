@@ -14,3 +14,4 @@ You are a software architect. Design a system architecture based on the followin
 - Include: component diagram (text-based), data flow, technology choices, and rationale.
 - If there are multiple viable approaches and you cannot determine a clear winner, output a line starting with `DECISION_REQUIRED:` followed by the options separated by `|`. Example: `DECISION_REQUIRED: monolith | modular | microservices`
 - Otherwise, commit to a single architecture and explain why.
+- **If this is an MVP tier build**: your architecture MUST define no more than 5 components. Before outputting, count your components. If you have more than 5, merge related components until you are at or below 5. This is a hard requirement.

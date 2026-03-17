@@ -17,11 +17,25 @@ You are a senior software engineer. Generate the implementation for ONE specific
 ## Files Already Implemented (by previous chunks)
 {existing_files}
 
+## ⚠️ Canonical Type Schema (AUTHORITATIVE — this is the law)
+
+The following types are the **single source of truth** for this project. They
+were defined in the architecture phase and are **immutable**.
+
+**RULES:**
+- You MUST use these exact type names, field names, and field types.
+- You MUST NOT add fields that are not listed here.
+- You MUST NOT rename fields (e.g. do NOT use `content` if the schema says `body`).
+- You MUST NOT create new interfaces/types for the same concept under a different name.
+- If a field you think you need is not in the schema, **you don't need it**. Adjust your implementation to work with the fields provided.
+
+```
+{canonical_schema}
+```
+
 ## Type Contracts (from previous chunks — DO NOT redefine these)
-The following types, interfaces, enums, and classes have already been defined by
-previous chunks. You MUST import and use these exact definitions. Do NOT create
-new types with the same name or purpose. If you need a type that is similar,
-import the existing one and extend it.
+The following types have already been implemented by previous chunks. Import
+them from the listed file paths. Do NOT redefine them.
 
 ```
 {type_contracts}
@@ -30,7 +44,8 @@ import the existing one and extend it.
 ## Instructions
 - Implement ONLY the component specified above. Do not produce files for other components.
 - You may import from or reference files in the "already implemented" list, but do not redefine them.
-- **CRITICAL**: Use the exact types from the "Type Contracts" section above. Import them from the listed file paths. Do NOT redefine interfaces, types, enums, or error classes that already exist.
+- **CRITICAL**: The Canonical Type Schema above is the DEFINITIVE reference. Every interface, field name, and field type in your code MUST match it exactly. If a field is not in the schema, do not use it.
+- Import shared types from the file paths specified in the schema. Do NOT redefine interfaces, types, enums, or error classes that already exist.
 - Follow the architecture exactly. Do not deviate from approved design decisions.
 - Include all files needed for this component: source code, configs, types, and tests.
 - Mark any sections where you made minor implementation choices with `<!-- IMPL_CHOICE: reason -->`.

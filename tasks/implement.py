@@ -16,6 +16,7 @@ from prefect import task
 from engine.cache import build_cache_key, cache_lookup, cache_save, hash_content, hash_params
 from engine.context import get_prompts_dir
 from engine.llm_provider import get_model_limit, get_provider
+from engine.design_contract import DesignContract
 from engine.state_loader import load_state_file, save_state_file
 from engine.tier_context import get_implement_guidance
 from engine.tracer import hash_prompt, trace
@@ -159,6 +160,43 @@ def _extract_type_contracts(manifest_json: str) -> str:
         return ""
 
     return "\n\n".join(contracts)
+
+
+# ── Canonical type schema extraction ─────────────────────────────────────────
+
+_CANONICAL_SCHEMA_HEADER = "## Canonical Type Schema"
+
+
+def _extract_canonical_schema(architecture: str) -> str:
+    """Extract the Canonical Type Schema section from the architecture document.
+
+    Returns the raw text of the schema section (including code blocks), or
+    an empty string if not found.  This schema is the single source of truth
+    for all shared types — it is injected into *every* implementation chunk
+    so the LLM never has to guess at field names.
+    """
+    idx = architecture.find(_CANONICAL_SCHEMA_HEADER)
+    if idx == -1:
+        logger.warning(
+            "Architecture document has no '%s' section. "
+            "Type consistency between chunks may suffer.",
+            _CANONICAL_SCHEMA_HEADER,
+        )
+        return ""
+
+    # Find the next H2 heading after the schema section to delimit the end
+    rest = architecture[idx + len(_CANONICAL_SCHEMA_HEADER):]
+    next_h2 = re.search(r"^## ", rest, re.MULTILINE)
+    if next_h2:
+        schema_text = rest[:next_h2.start()].strip()
+    else:
+        schema_text = rest.strip()
+
+    logger.info(
+        "Extracted canonical type schema (%d chars) from architecture.",
+        len(schema_text),
+    )
+    return schema_text
 
 
 _MANIFEST_RECOVERY_PROMPT = """\
@@ -388,6 +426,7 @@ def _implement_chunk(
     component: dict,
     existing_files: list[str],
     type_contracts: str = "",
+    canonical_schema: str = "",
 ) -> tuple[str, str]:
     """Implement a single component chunk. Returns (markdown, manifest_json).
 
@@ -395,6 +434,8 @@ def _implement_chunk(
         type_contracts: Extracted type signatures from previous chunks.
             Injected into the prompt so the LLM can import existing types
             instead of reinventing them.
+        canonical_schema: The authoritative type schema from the architecture
+            document.  Injected into every chunk as the single source of truth.
     """
     tier_guidance = get_implement_guidance()
     chunk_template = (get_prompts_dir() / "implement_chunk.txt").read_text()
@@ -411,6 +452,12 @@ def _implement_chunk(
     else:
         type_contracts_str = "(none — this is the first chunk)"
 
+    # Format canonical schema
+    if canonical_schema:
+        canonical_schema_str = canonical_schema
+    else:
+        canonical_schema_str = "(no canonical schema provided — use your best judgment for type definitions)"
+
     prompt = chunk_template.format(
         architecture=architecture,
         requirements=requirements,
@@ -419,18 +466,21 @@ def _implement_chunk(
         component_description=component["description"],
         existing_files=existing_files_str,
         type_contracts=type_contracts_str,
+        canonical_schema=canonical_schema_str,
         tier_guidance=tier_guidance,
     )
 
     # Cache lookup for this specific chunk
-    # NOTE: type_contracts and tier_guidance are included in the envelope hash so
-    # that changes to earlier chunks or tier selection correctly invalidate caches.
+    # NOTE: type_contracts, canonical_schema, and tier_guidance are included in the
+    # envelope hash so that changes to earlier chunks, schema, or tier selection
+    # correctly invalidate caches.
     template_hash = hash_content(chunk_template)
     envelope_hash = hash_content(
         architecture + requirements + constraints
         + component["name"] + component["description"]
         + "".join(existing_files)
         + type_contracts
+        + canonical_schema
         + tier_guidance
     )
     params_h = hash_params(provider.model, provider.max_tokens)
@@ -557,12 +607,108 @@ def _implement_single(
 
 # ── Main task ───────────────────────────────────────────────────────────────
 
+def _load_design_contract() -> DesignContract | None:
+    """Try to load the design contract from state.  Returns None if not found."""
+    try:
+        raw = load_state_file("designs/DESIGN_CONTRACT.json")
+        return DesignContract.from_json(raw)
+    except Exception:
+        logger.info("No DESIGN_CONTRACT.json found — falling back to LLM-planned components.")
+        return None
+
+
+def _contract_to_components(contract: DesignContract) -> list[dict]:
+    """Convert a design contract into the component dicts used by _implement_chunk.
+
+    Each dict gets an extra ``contract_files`` key listing the exact files
+    the chunk is expected to produce — this is injected into the prompt.
+    """
+    components = []
+    for comp in contract.components:
+        dep_descriptions = []
+        for dep_name in comp.imports_from:
+            dep = next((c for c in contract.components if c.name == dep_name), None)
+            if dep:
+                dep_descriptions.append(f"- **{dep.name}**: {dep.description}")
+
+        imports_context = (
+            "\n".join(dep_descriptions) if dep_descriptions else "(none)"
+        )
+
+        description = (
+            f"{comp.description}\n\n"
+            f"**You MUST produce exactly these files (no more, no fewer):**\n"
+            + "\n".join(f"- `{f}`" for f in comp.files)
+            + f"\n\n**Max files for this component: {comp.max_files}**"
+            + f"\n\n**This component imports from:**\n{imports_context}"
+        )
+
+        if comp.exports_types:
+            description += (
+                f"\n\n**This component defines these canonical types "
+                f"(use exact field names from the schema):** "
+                + ", ".join(comp.exports_types)
+            )
+
+        components.append({
+            "name": comp.name,
+            "description": description,
+            "contract_files": comp.files,
+            "max_files": comp.max_files,
+        })
+    return components
+
+
+def _build_canonical_schema_from_contract(contract: DesignContract) -> str:
+    """Build a canonical schema string from the contract's type definitions.
+
+    This is more reliable than extracting from prose because it comes
+    from validated, structured JSON.
+    """
+    if not contract.canonical_types:
+        return ""
+
+    # Group types by file path
+    by_file: dict[str, list] = {}
+    for td in contract.canonical_types:
+        by_file.setdefault(td.file_path, []).append(td)
+
+    parts = []
+    for file_path, types in by_file.items():
+        lines = [f"### `{file_path}`"]
+        lang = "typescript" if contract.language in ("typescript", "javascript") else "python"
+        lines.append(f"```{lang}")
+
+        for td in types:
+            if lang in ("typescript",):
+                lines.append(f"export {td.kind} {td.name} {{")
+                for fname, ftype in td.fields.items():
+                    lines.append(f"  {fname}: {ftype};")
+                lines.append("}")
+                lines.append("")
+            else:
+                lines.append(f"@dataclass")
+                lines.append(f"class {td.name}:")
+                for fname, ftype in td.fields.items():
+                    lines.append(f"    {fname}: {ftype}")
+                lines.append("")
+
+        lines.append("```")
+        parts.append("\n".join(lines))
+
+    return "\n\n".join(parts)
+
+
 @task(name="implement")
 def implement_system() -> None:
     """Read architecture from state/designs/, generate implementation via LLM.
 
-    Automatically switches to chunked mode when the project is estimated
-    to exceed the token budget for a single call.
+    If a DESIGN_CONTRACT.json exists, uses it as the authoritative spec:
+    - Components come from the contract (no LLM planning step).
+    - Each chunk gets its exact file list from the contract.
+    - Canonical types come from the contract's structured definitions.
+
+    Falls back to LLM-planned components if no contract is available.
     """
     architecture = load_state_file("designs/ARCHITECTURE.md")
     requirements = load_state_file("inputs/REQUIREMENTS.md")
@@ -570,9 +716,31 @@ def implement_system() -> None:
 
     provider = get_provider(stage="implement")
 
+    # ── Try to load the design contract ──────────────────────────────
+    contract = _load_design_contract()
+
     if _should_chunk(architecture, requirements, constraints, provider):
         # ── Chunked implementation ──────────────────────────────────
-        components = _plan_components(provider, architecture)
+        if contract:
+            # Contract-driven: components come from the validated contract.
+            # No LLM planning step — the architect already decided.
+            components = _contract_to_components(contract)
+            canonical_schema = _build_canonical_schema_from_contract(contract)
+            logger.info(
+                "Using design contract: %d components, %d canonical types, "
+                "budget %d files.",
+                len(contract.components),
+                len(contract.canonical_types),
+                contract.total_file_budget,
+            )
+        else:
+            # Legacy fallback: ask the LLM to split the architecture.
+            components = _plan_components(provider, architecture)
+            canonical_schema = _extract_canonical_schema(architecture)
+            logger.warning(
+                "No design contract — using LLM-planned components. "
+                "Type consistency may suffer."
+            )
 
         all_markdowns: list[str] = []
         all_manifests: list[str] = []
@@ -592,13 +760,39 @@ def implement_system() -> None:
                 provider, architecture, requirements, constraints,
                 component, all_files,
                 type_contracts=type_contracts,
+                canonical_schema=canonical_schema,
             )
             all_markdowns.append(f"## Component: {component['name']}\n\n{md}")
             all_manifests.append(manifest_json)
 
             # Track files produced so far for context in next chunk
             parsed = json.loads(manifest_json)
-            all_files.extend(f["path"] for f in parsed["files"])
+            chunk_files = [f["path"] for f in parsed["files"]]
+            all_files.extend(chunk_files)
+
+            # If contract-driven, log adherence to file list
+            if contract and "contract_files" in component:
+                expected = set(component["contract_files"])
+                actual = set(chunk_files)
+                extra_files = actual - expected
+                missing_files = expected - actual
+                if extra_files:
+                    logger.warning(
+                        "  Chunk '%s' produced %d EXTRA files not in contract: %s",
+                        component["name"], len(extra_files),
+                        sorted(extra_files),
+                    )
+                if missing_files:
+                    logger.warning(
+                        "  Chunk '%s' is MISSING %d files from contract: %s",
+                        component["name"], len(missing_files),
+                        sorted(missing_files),
+                    )
+                if not extra_files and not missing_files:
+                    logger.info(
+                        "  Chunk '%s' matches contract exactly (%d files).",
+                        component["name"], len(actual),
+                    )
 
             # Extract type contracts from this chunk for subsequent chunks
             chunk_contracts = _extract_type_contracts(manifest_json)
@@ -640,7 +834,11 @@ def implement_system() -> None:
     save_state_file(md_path, markdown)
     save_state_file(manifest_path, manifest_json)
 
-    extra = {"cache_hit": cache_hit, "cache_key": cache_key}
+    extra = {
+        "cache_hit": cache_hit,
+        "cache_key": cache_key,
+        "contract_driven": contract is not None,
+    }
     if merge_conflicts:
         extra["merge_conflicts"] = merge_conflicts
         extra["merge_conflict_count"] = len(merge_conflicts)

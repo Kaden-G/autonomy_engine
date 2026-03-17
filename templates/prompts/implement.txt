@@ -13,6 +13,7 @@ You are a senior software engineer. Generate an implementation based on the appr
 - Produce implementation code and documentation in Markdown format.
 - Include: file structure, key modules with code, configuration files, and setup instructions.
 - Follow the architecture exactly. Do not deviate from approved design decisions.
+- **CRITICAL**: If the architecture includes a "Canonical Type Schema" section, you MUST use those exact type definitions — same type names, same field names, same field types. Do NOT add fields that are not in the schema. Do NOT rename fields. The schema is the single source of truth.
 - Mark any sections where you made minor implementation choices with `<!-- IMPL_CHOICE: reason -->`.
 
 ## File Manifest (REQUIRED)

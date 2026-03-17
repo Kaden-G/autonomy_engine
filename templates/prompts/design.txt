@@ -15,3 +15,86 @@ You are a software architect. Design a system architecture based on the followin
 - If there are multiple viable approaches and you cannot determine a clear winner, output a line starting with `DECISION_REQUIRED:` followed by the options separated by `|`. Example: `DECISION_REQUIRED: monolith | modular | microservices`
 - Otherwise, commit to a single architecture and explain why.
 - **If this is an MVP tier build**: your architecture MUST define no more than 5 components. Before outputting, count your components. If you have more than 5, merge related components until you are at or below 5. This is a hard requirement.
+
+## REQUIRED: Canonical Type Schema
+
+You MUST include a section titled exactly `## Canonical Type Schema` in your architecture document. This section defines the **single source of truth** for all shared data types in the project.
+
+Rules for the Canonical Type Schema:
+- Write every shared interface, type, and enum as valid TypeScript (for TS/JS projects) or Python dataclass/TypedDict (for Python projects).
+- **Every field must be explicitly listed.** Implementation chunks are FORBIDDEN from adding fields not defined here.
+- Put each type in a fenced code block with the exact file path where it should live (e.g., `src/types/index.ts`).
+- This schema is **authoritative** — all implementation components MUST use these exact type names, field names, and field types. No deviations, no additions, no renaming.
+- Think carefully about what fields the application actually needs. Consider ALL features in the requirements and ensure the types cover them.
+
+## REQUIRED: Design Contract (structured JSON)
+
+After your Markdown architecture, you MUST output a structured **Design Contract** as a JSON block. This contract is the machine-readable specification that the implementation pipeline will enforce. It is NOT optional.
+
+Place it between these exact marker comments:
+
+<!-- DESIGN_CONTRACT_START -->
+```json
+{{
+  "project_name": "my-project",
+  "language": "typescript",
+  "entry_point": "src/main.tsx",
+  "total_file_budget": 40,
+  "tech_decisions": [
+    {{
+      "category": "framework",
+      "choice": "React 18",
+      "rationale": "SPA requirement, wide ecosystem"
+    }},
+    {{
+      "category": "bundler",
+      "choice": "Vite 4",
+      "rationale": "Fast HMR, native ESM"
+    }}
+  ],
+  "canonical_types": [
+    {{
+      "name": "User",
+      "kind": "interface",
+      "file_path": "src/types/index.ts",
+      "fields": {{
+        "id": "string",
+        "email": "string",
+        "name": "string",
+        "createdAt": "string"
+      }}
+    }}
+  ],
+  "components": [
+    {{
+      "name": "Core Types & Config",
+      "description": "Shared type definitions, constants, and app configuration",
+      "files": ["src/types/index.ts", "src/config.ts"],
+      "imports_from": [],
+      "exports_types": ["User"],
+      "max_files": 3
+    }},
+    {{
+      "name": "UI Components",
+      "description": "React components for the user interface",
+      "files": ["src/App.tsx", "src/components/Header.tsx", "src/components/UserList.tsx"],
+      "imports_from": ["Core Types & Config"],
+      "exports_types": [],
+      "max_files": 8
+    }}
+  ]
+}}
+```
+<!-- DESIGN_CONTRACT_END -->
+
+**Rules for the Design Contract:**
+- **Every component** you described in the architecture MUST appear in the `components` array.
+- **Every file** the project needs MUST be listed in exactly ONE component's `files` array. No file may appear in two components.
+- **`canonical_types`** MUST match the Canonical Type Schema section exactly — same names, same fields, same file paths.
+- **`imports_from`** must list component names (not file paths) that this component depends on.
+- **`exports_types`** must list type names from `canonical_types` that this component defines.
+- **`max_files`** is a hard ceiling per component. The implementation will be rejected if a component exceeds its limit.
+- **`total_file_budget`** is the sum ceiling. For MVP, this should be ≤ 40.
+- **`tech_decisions`** locks in every major technology choice. The implementation MUST use these, no substitutions.
+- **`entry_point`** is the main application entry file.
+- The JSON must be valid. Double-check your braces, brackets, and commas.

@@ -1,14 +1,25 @@
-"""Design task — LLM generates architecture from requirements."""
+"""Design task — LLM generates architecture from requirements.
+
+Produces two outputs:
+    1. ``state/designs/ARCHITECTURE.md`` — prose architecture document.
+    2. ``state/designs/DESIGN_CONTRACT.json`` — structured, validated contract
+       that the Implement stage uses as its authoritative specification.
+"""
+
+import logging
 
 from prefect import task
 
 from engine.cache import build_cache_key, cache_lookup, cache_save, hash_content, hash_params
 from engine.context import get_prompts_dir
 from engine.decision_gates import DecisionRequired, decision_exists, load_decision
+from engine.design_contract import ContractValidationError, extract_contract
 from engine.llm_provider import get_provider
 from engine.state_loader import load_state_file, save_state_file
 from engine.tier_context import get_design_guidance
 from engine.tracer import hash_prompt, trace
+
+logger = logging.getLogger(__name__)
 
 
 @task(name="design")
@@ -64,16 +75,50 @@ def design_system() -> None:
         if not decision_exists(decision_key):
             raise DecisionRequired(decision_key, "design", options)
 
+    # ── Save architecture prose ──────────────────────────────────────────
     output_path = "designs/ARCHITECTURE.md"
     save_state_file(output_path, architecture)
+
+    # ── Extract and validate the design contract ─────────────────────────
+    contract_path = "designs/DESIGN_CONTRACT.json"
+    contract_extracted = False
+    contract_errors: list[str] = []
+
+    try:
+        contract = extract_contract(architecture)
+        save_state_file(contract_path, contract.to_json())
+        contract_extracted = True
+        logger.info(
+            "Design contract saved: %d components, %d canonical types.",
+            len(contract.components),
+            len(contract.canonical_types),
+        )
+    except ContractValidationError as exc:
+        # Contract exists but has validation errors — save it anyway for
+        # debugging, but log the errors prominently.
+        contract_errors = exc.errors
+        logger.error(
+            "Design contract has %d validation error(s):\n%s",
+            len(exc.errors),
+            "\n".join(f"  - {e}" for e in exc.errors),
+        )
+    except RuntimeError as exc:
+        # No contract found at all — log warning but don't fail the stage.
+        # The implement stage will fall back to the old behavior.
+        logger.warning("Could not extract design contract: %s", exc)
 
     trace(
         task="design",
         inputs=["inputs/REQUIREMENTS.md", "inputs/CONSTRAINTS.md", "inputs/NON_GOALS.md"],
-        outputs=[output_path],
+        outputs=[output_path] + ([contract_path] if contract_extracted else []),
         model=provider.model,
         prompt_hash=p_hash,
         provider=provider.provider,
         max_tokens=provider.max_tokens,
-        extra={"cache_hit": cache_hit, "cache_key": cache_key},
+        extra={
+            "cache_hit": cache_hit,
+            "cache_key": cache_key,
+            "contract_extracted": contract_extracted,
+            "contract_errors": contract_errors,
+        },
     )

@@ -11,8 +11,6 @@ from dashboard.data_loader import (
     verify_trace_integrity,
 )
 from dashboard.theme import (
-    BG_SURFACE,
-    BORDER,
     FONT_BODY,
     FONT_SMALL,
     MUTED,
@@ -89,7 +87,7 @@ def render(project_dir):
 
         st.markdown(
             f"""<div style="border:1px solid {chain_color}; border-radius:{RADIUS};
-                    padding:12px; margin-bottom:8px; background:{chain_color}08;">
+                    padding:12px; margin-bottom:8px; background:{chain_color}12;">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <div>
                         <span style="font-size:{FONT_BODY}; font-weight:700; color:{TEXT_PRIMARY};">

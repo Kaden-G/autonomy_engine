@@ -2,10 +2,15 @@
 
 Single source of truth for colors, typography, and reusable CSS helpers.
 Import this module instead of hardcoding hex values in pages/components.
+
+DESIGN PRINCIPLE: Dark-mode native. Streamlit's dark theme is the default.
+All colors are chosen to look right on dark backgrounds. We use `inherit`
+and CSS custom properties where possible so Streamlit's own theming still
+works, but our custom HTML elements must explicitly use dark-friendly colors.
 """
 
 # ── Brand / Sidebar ─────────────────────────────────────────────────────────
-SIDEBAR_BG = "#0F2537"            # Deep navy (darker, more modern)
+SIDEBAR_BG = "#0F2537"            # Deep navy
 SIDEBAR_ACCENT = "#3B82F6"        # Bright blue accent for active items
 SIDEBAR_TEXT = "#CBD5E1"          # Soft silver for sidebar body text
 SIDEBAR_TEXT_ACTIVE = "#FFFFFF"   # White for active/selected item
@@ -15,20 +20,20 @@ PRIMARY = "#3B82F6"               # Blue — primary actions, active states
 SUCCESS = "#10B981"               # Green — passed, healthy, complete
 WARNING = "#F59E0B"               # Amber — in-progress, caution
 ERROR = "#EF4444"                 # Red — failed, broken, critical
-MUTED = "#94A3B8"                 # Slate — disabled, pending, placeholder
+MUTED = "#64748B"                 # Slate — disabled, pending, placeholder
 INFO = "#6366F1"                  # Indigo — informational highlights
 
-# ── Surface & text ──────────────────────────────────────────────────────────
-BG_PAGE = "#FFFFFF"               # Main content background
-BG_SURFACE = "#F8FAFC"           # Cards, panels, inset areas
-BG_SURFACE_DARK = "#F1F5F9"      # Slightly darker surface for contrast
-BORDER = "#E2E8F0"               # Default borders
-BORDER_FOCUS = "#3B82F6"         # Focused/active borders
+# ── Surface & text (dark-mode native) ───────────────────────────────────────
+BG_PAGE = "#0E1117"               # Streamlit's dark mode page background
+BG_SURFACE = "rgba(255,255,255,0.05)"   # Subtle surface lift (transparent)
+BG_SURFACE_DARK = "rgba(255,255,255,0.08)"  # Slightly more contrast
+BORDER = "rgba(255,255,255,0.1)"  # Subtle borders on dark bg
+BORDER_FOCUS = "#3B82F6"          # Focused/active borders
 
-TEXT_PRIMARY = "#1E293B"          # Headings, high-emphasis text
-TEXT_BODY = "#475569"             # All body/paragraph text — THE consistent default
-TEXT_MUTED = "#94A3B8"            # Captions, timestamps, secondary info
-TEXT_INVERSE = "#FFFFFF"          # Text on dark backgrounds
+TEXT_PRIMARY = "#E2E8F0"          # Headings, high-emphasis (off-white)
+TEXT_BODY = "#CBD5E1"             # Body text (soft silver)
+TEXT_MUTED = "#64748B"            # Captions, timestamps
+TEXT_INVERSE = "#0F172A"          # Dark text on light backgrounds (badges)
 
 # ── Typography ──────────────────────────────────────────────────────────────
 FONT_BODY = "14px"               # Every non-header text uses this
@@ -54,17 +59,20 @@ STAGE_COLORS = {
 STATUS_PASSED = SUCCESS
 STATUS_FAILED = ERROR
 STATUS_RUNNING = WARNING
-STATUS_PENDING = MUTED
+STATUS_PENDING = "#334155"        # Dark slate — visually "off" on dark bg
 
 # ── Spacing ─────────────────────────────────────────────────────────────────
-RADIUS = "8px"                    # Default border radius
+RADIUS = "8px"
 RADIUS_SM = "4px"
 RADIUS_LG = "12px"
 PADDING_CARD = "16px"
 PADDING_SECTION = "24px"
 
 # ── Global CSS ──────────────────────────────────────────────────────────────
-# Inject this once in app.py to normalize all text across the dashboard.
+# Injected once in app.py. We intentionally DON'T override Streamlit's
+# native text colors for standard elements (p, h1, etc.) — those inherit
+# from Streamlit's dark theme. We only style OUR custom HTML and tweak
+# spacing/sizing.
 
 GLOBAL_CSS = f"""
 <style>
@@ -95,71 +103,27 @@ GLOBAL_CSS = f"""
         border-color: rgba(255,255,255,0.1);
     }}
 
-    /* ── Main content ── */
+    /* ── Main content spacing ── */
     .block-container {{
         padding-top: 2rem;
         padding-bottom: 2rem;
     }}
 
-    /* Normalize body text: every p, li, span, td in main content */
+    /* ── Typography sizing (color inherits from Streamlit theme) ── */
     .main .stMarkdown p,
     .main .stMarkdown li,
     .main .stMarkdown td {{
         font-size: {FONT_BODY};
-        color: {TEXT_BODY};
         line-height: {LINE_HEIGHT};
-    }}
-
-    /* Headings */
-    .main .stMarkdown h1 {{
-        font-size: {FONT_H1};
-        color: {TEXT_PRIMARY};
-        font-weight: 700;
-        margin-bottom: 0.5rem;
-    }}
-    .main .stMarkdown h2 {{
-        font-size: {FONT_H2};
-        color: {TEXT_PRIMARY};
-        font-weight: 600;
-    }}
-    .main .stMarkdown h3 {{
-        font-size: {FONT_H3};
-        color: {TEXT_PRIMARY};
-        font-weight: 600;
-    }}
-
-    /* Captions — use the muted style consistently */
-    .main .stCaption p {{
-        font-size: {FONT_SMALL} !important;
-        color: {TEXT_MUTED} !important;
-    }}
-
-    /* Metric labels and values */
-    [data-testid="stMetricLabel"] p {{
-        font-size: {FONT_SMALL} !important;
-        color: {TEXT_MUTED} !important;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }}
-    [data-testid="stMetricValue"] {{
-        font-size: 24px !important;
-        color: {TEXT_PRIMARY} !important;
     }}
 
     /* Tab labels */
     .stTabs [data-baseweb="tab"] p {{
         font-size: {FONT_BODY};
-        color: {TEXT_BODY};
     }}
     .stTabs [aria-selected="true"] p {{
         color: {PRIMARY} !important;
         font-weight: 600;
-    }}
-
-    /* Expander headers */
-    .streamlit-expanderHeader p {{
-        font-size: {FONT_BODY} !important;
-        color: {TEXT_PRIMARY} !important;
     }}
 
     /* Info/warning/error boxes */
@@ -199,7 +163,9 @@ def chip(text: str) -> str:
 
 
 def section_description(text: str) -> str:
-    """Page-top description block with left accent border."""
+    """Page-top description block with left accent border.
+    Dark-mode native — translucent background, light text.
+    """
     return (
         f'<div style="background:{BG_SURFACE}; border-left:3px solid {PRIMARY};'
         f' border-radius:0 {RADIUS} {RADIUS} 0; padding:10px 14px;'

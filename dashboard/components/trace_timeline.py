@@ -5,7 +5,6 @@ from datetime import datetime
 import streamlit as st
 
 from dashboard.theme import (
-    BG_SURFACE_DARK,
     FONT_BODY,
     FONT_SMALL,
     RADIUS,
@@ -53,10 +52,11 @@ def render_timeline(entries: list[dict]):
 
         chip_html = " ".join(chips)
 
+        # Dark-mode: use color at low alpha for bg, full for border & accent
         st.markdown(
             f"""<div style="display:flex; gap:12px; margin-bottom:10px;
                     padding:12px; border-left:4px solid {color};
-                    background-color:{color}08; border-radius:0 {RADIUS} {RADIUS} 0;">
+                    background-color:{color}12; border-radius:0 {RADIUS} {RADIUS} 0;">
                 <div style="min-width:32px; text-align:center;">
                     <div style="font-size:18px; font-weight:700; color:{color};">
                         {seq}

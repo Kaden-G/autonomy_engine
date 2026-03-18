@@ -1,11 +1,30 @@
-"""Create Project page — form-based intake for ProjectSpec."""
+"""Create Project page — form-based intake for ProjectSpec.
 
+Also includes project management: load a previous project's spec into
+the form, or clear all fields to start fresh.
+"""
+
+import yaml
 import streamlit as st
 from pydantic import ValidationError
 
 from engine.context import init as init_context
 from intake.renderer import render_all
 from intake.schema import Constraints, Domain, Outputs, ProjectInfo, ProjectSpec, Requirements
+
+from dashboard.data_loader import get_state_dir, list_runs, load_project_spec
+from dashboard.theme import (
+    BG_SURFACE,
+    BORDER,
+    FONT_BODY,
+    FONT_SMALL,
+    MUTED,
+    PRIMARY,
+    RADIUS,
+    TEXT_BODY,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+)
 
 # Keys for all form fields stored in session_state
 _FIELDS = {
@@ -35,6 +54,34 @@ def _parse_lines(text: str) -> list[str]:
     return [line.strip() for line in text.strip().splitlines() if line.strip()]
 
 
+def _clear_form():
+    """Reset all form fields to defaults."""
+    for key, default in _FIELDS.items():
+        st.session_state[key] = default
+
+
+def _load_spec_into_form(spec: dict):
+    """Populate the form fields from a project_spec.yml dict."""
+    project = spec.get("project", {})
+    reqs = spec.get("requirements", {})
+    constraints = spec.get("constraints", {})
+    outputs = spec.get("outputs", {})
+
+    st.session_state["cp_name"] = project.get("name", "")
+    st.session_state["cp_domain"] = project.get("domain", "software")
+    st.session_state["cp_description"] = project.get("description", "")
+
+    # Lists → newline-joined text
+    st.session_state["cp_functional"] = "\n".join(reqs.get("functional", []))
+    st.session_state["cp_non_functional"] = "\n".join(reqs.get("non_functional", []))
+    st.session_state["cp_tech_stack"] = "\n".join(constraints.get("tech_stack", []))
+    st.session_state["cp_performance"] = constraints.get("performance", "") or ""
+    st.session_state["cp_security"] = constraints.get("security", "") or ""
+    st.session_state["cp_non_goals"] = "\n".join(spec.get("non_goals", []))
+    st.session_state["cp_acceptance"] = "\n".join(spec.get("acceptance_criteria", []))
+    st.session_state["cp_artifacts"] = "\n".join(outputs.get("expected_artifacts", []))
+
+
 def render(project_dir):
     st.title("Create Project")
 
@@ -44,12 +91,73 @@ def render(project_dir):
         "required fields are marked with *. "
         "Your inputs auto-save, so you can navigate away and come back "
         "without losing work. On submit, the engine generates intake artifacts "
-        "(requirements, constraints, acceptance criteria) that feed into the pipeline. "
-        "After creating your project, head to Run Pipeline to start the build."
+        "that feed into the pipeline. Use the controls below to load a "
+        "previous project or start fresh."
     )
 
     _init_session_defaults()
 
+    # ── Project management bar ──────────────────────────────────────────
+    st.subheader("Project Manager")
+
+    current_spec = load_project_spec(project_dir)
+    state_dir = get_state_dir(project_dir)
+    runs = list_runs(project_dir)
+
+    # Show current project info if one exists
+    if current_spec:
+        project_name = current_spec.get("project", {}).get("name", "Unknown")
+        run_count = len(runs)
+        st.markdown(
+            f"**Active project:** {project_name} · "
+            f"{run_count} run(s) on record"
+        )
+
+        # Where are built artifacts?
+        build_dir = state_dir / "build"
+        if build_dir.exists():
+            manifest = build_dir / "MANIFEST.md"
+            if manifest.exists():
+                st.caption(f"Build output: `{build_dir}`")
+
+    mgmt_col1, mgmt_col2, mgmt_col3 = st.columns(3)
+
+    with mgmt_col1:
+        if current_spec and st.button("Load Current Project", use_container_width=True):
+            _load_spec_into_form(current_spec)
+            st.rerun()
+
+    with mgmt_col2:
+        if st.button("Clear Form (Start New)", use_container_width=True):
+            _clear_form()
+            st.rerun()
+
+    with mgmt_col3:
+        # Show past run output directories
+        if runs:
+            if st.button("View Run History", use_container_width=True):
+                st.session_state["page"] = "Inspector"
+                st.rerun()
+
+    # Show past runs summary if we have any
+    if runs and current_spec:
+        with st.expander(f"Run history ({len(runs)} runs)"):
+            for run in runs[:10]:
+                run_id = run["run_id"]
+                started = run.get("started_at", "?")
+                if isinstance(started, str) and len(started) > 19:
+                    started = started[:19].replace("T", " ")
+                stages = " → ".join(run.get("stages", [])) if run.get("stages") else "no stages"
+                evidence_count = run.get("evidence_count", 0)
+
+                st.markdown(
+                    f"`{run_id[:12]}…` · {started} · {stages} · "
+                    f"{evidence_count} evidence records"
+                )
+
+    st.divider()
+
+    # ── Create / edit form ──────────────────────────────────────────────
     domain_options = [d.value for d in Domain]
 
     with st.form("create_project_form"):

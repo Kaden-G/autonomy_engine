@@ -38,8 +38,97 @@ def _all_checks_passed(evidence: list[dict]) -> bool:
     return True
 
 
+def _classify_issues(evidence: list[dict]) -> dict:
+    """Classify evidence into structural issue categories.
+
+    Returns a dict with keys: type_errors, import_errors, lint_errors,
+    test_failures, contract_issues, build_errors — each a list of strings.
+    """
+    categories: dict[str, list[str]] = {
+        "type_errors": [],
+        "import_errors": [],
+        "lint_errors": [],
+        "test_failures": [],
+        "contract_issues": [],
+        "build_errors": [],
+        "other_failures": [],
+    }
+
+    for r in evidence:
+        name = r.get("name", "")
+        exit_code = r.get("exit_code", -1)
+        if exit_code == 0 or name == "no_checks_configured":
+            continue
+
+        stdout = r.get("stdout", "")
+        stderr = r.get("stderr", "")
+        output = stdout + "\n" + stderr
+
+        if name == "contract-compliance":
+            # Extract individual issues from compliance output
+            for line in output.splitlines():
+                line = line.strip()
+                if line.startswith("[ERROR]") or line.startswith("[WARN]"):
+                    categories["contract_issues"].append(line)
+            if not categories["contract_issues"]:
+                categories["contract_issues"].append(f"Contract compliance check failed (exit {exit_code})")
+
+        elif name in ("typecheck", "type-check"):
+            # Count type errors from output
+            error_lines = [l for l in output.splitlines() if "error TS" in l or ": error:" in l]
+            if error_lines:
+                categories["type_errors"].extend(error_lines[:10])  # Cap at 10
+                if len(error_lines) > 10:
+                    categories["type_errors"].append(f"... and {len(error_lines) - 10} more type errors")
+            else:
+                categories["type_errors"].append(f"Type check failed (exit {exit_code})")
+
+        elif name in ("import-check", "import_check"):
+            error_lines = [l for l in output.splitlines() if "cannot resolve" in l.lower()]
+            if error_lines:
+                categories["import_errors"].extend(error_lines[:10])
+                if len(error_lines) > 10:
+                    categories["import_errors"].append(f"... and {len(error_lines) - 10} more import errors")
+            else:
+                categories["import_errors"].append(f"Import check failed (exit {exit_code})")
+
+        elif name == "lint":
+            error_lines = [l for l in output.splitlines() if ": " in l and ("E" in l or "F" in l)]
+            if error_lines:
+                categories["lint_errors"].extend(error_lines[:10])
+                if len(error_lines) > 10:
+                    categories["lint_errors"].append(f"... and {len(error_lines) - 10} more lint errors")
+            else:
+                categories["lint_errors"].append(f"Lint check failed (exit {exit_code})")
+
+        elif name == "test":
+            categories["test_failures"].append(f"Tests failed (exit {exit_code})")
+            # Grab failure summary line if present
+            for line in output.splitlines():
+                if "failed" in line.lower() and ("passed" in line.lower() or "error" in line.lower()):
+                    categories["test_failures"].append(line.strip())
+                    break
+
+        elif name == "build":
+            categories["build_errors"].append(f"Build failed (exit {exit_code})")
+            # Grab the last few lines which usually contain the error
+            error_tail = [l.strip() for l in output.strip().splitlines()[-5:] if l.strip()]
+            categories["build_errors"].extend(error_tail)
+
+        else:
+            categories["other_failures"].append(f"{name}: failed (exit {exit_code})")
+
+    # Remove empty categories
+    return {k: v for k, v in categories.items() if v}
+
+
 def _build_deterministic_verification(evidence: list[dict], passed: bool) -> str:
-    """Write a deterministic VERIFICATION.md without calling the LLM."""
+    """Write a deterministic VERIFICATION.md without calling the LLM.
+
+    This now includes structural issue analysis — classifying failures by
+    category so the user (and the pipeline) can see exactly what went wrong,
+    not just pass/fail.
+    """
     lines = ["# Verification Summary", ""]
 
     if passed:
@@ -49,14 +138,75 @@ def _build_deterministic_verification(evidence: list[dict], passed: bool) -> str
     else:
         lines.append("## Result: FAILED")
         lines.append("")
-        lines.append("One or more checks failed:")
+        lines.append("One or more checks failed. See issue breakdown below.")
 
+    # Per-check summary
+    lines.append("")
+    lines.append("## Check Results")
     lines.append("")
     for r in evidence:
         if r.get("name") == "no_checks_configured":
             continue
         status = "PASS" if r.get("exit_code", -1) == 0 else "FAIL"
         lines.append(f"- **{r['name']}**: {status} (exit code {r.get('exit_code', 'N/A')})")
+
+    # Structural issue breakdown
+    if not passed:
+        issues = _classify_issues(evidence)
+        if issues:
+            lines.append("")
+            lines.append("## Structural Issue Breakdown")
+            lines.append("")
+
+            category_labels = {
+                "contract_issues": "Contract Compliance",
+                "type_errors": "Type Errors",
+                "import_errors": "Import / Dependency Errors",
+                "lint_errors": "Lint Errors",
+                "build_errors": "Build Errors",
+                "test_failures": "Test Failures",
+                "other_failures": "Other Failures",
+            }
+
+            for cat, items in issues.items():
+                label = category_labels.get(cat, cat)
+                lines.append(f"### {label} ({len(items)} issue(s))")
+                lines.append("")
+                for item in items:
+                    lines.append(f"- {item}")
+                lines.append("")
+
+            # Actionable guidance
+            lines.append("## Recommended Actions")
+            lines.append("")
+            if "type_errors" in issues:
+                lines.append(
+                    "- **Type errors** indicate cross-file type inconsistencies. "
+                    "Check that the canonical type schema was respected in all chunks."
+                )
+            if "import_errors" in issues:
+                lines.append(
+                    "- **Import errors** suggest files are referencing modules that "
+                    "don't exist or were named differently. Check the component "
+                    "dependency graph in the design contract."
+                )
+            if "contract_issues" in issues:
+                lines.append(
+                    "- **Contract compliance issues** mean the output diverged from "
+                    "the design contract. Files may be missing, extra, or have "
+                    "incorrect type definitions."
+                )
+            if "build_errors" in issues:
+                lines.append(
+                    "- **Build errors** usually cascade from type or import errors. "
+                    "Fix those first and rebuild."
+                )
+            if "lint_errors" in issues:
+                lines.append(
+                    "- **Lint errors** are often cosmetic but can indicate real bugs "
+                    "(unused imports, undefined names). Review the specific codes."
+                )
+            lines.append("")
 
     lines.append("")
     return "\n".join(lines)
@@ -119,8 +269,33 @@ def verify_system() -> None:
 
     if call_llm:
         prompt_template = (get_prompts_dir() / "verify.txt").read_text()
+
+        # Build structural analysis for the LLM
+        issues = _classify_issues(evidence)
+        if issues:
+            structural_lines = []
+            category_labels = {
+                "contract_issues": "Contract Compliance",
+                "type_errors": "Type Errors",
+                "import_errors": "Import / Dependency Errors",
+                "lint_errors": "Lint Errors",
+                "build_errors": "Build Errors",
+                "test_failures": "Test Failures",
+                "other_failures": "Other Failures",
+            }
+            for cat, items in issues.items():
+                label = category_labels.get(cat, cat)
+                structural_lines.append(f"### {label} ({len(items)} issue(s))")
+                for item in items:
+                    structural_lines.append(f"- {item}")
+                structural_lines.append("")
+            structural_analysis = "\n".join(structural_lines)
+        else:
+            structural_analysis = "No structural issues detected — all checks passed."
+
         prompt = prompt_template.format(
             evidence=evidence_text,
+            structural_analysis=structural_analysis,
             acceptance_criteria=acceptance,
             requirements=requirements,
         )

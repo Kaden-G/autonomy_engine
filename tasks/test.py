@@ -12,7 +12,8 @@ from pathlib import Path
 import yaml
 from prefect import task
 
-from engine.context import get_project_dir
+from engine.context import get_project_dir, get_state_dir
+from engine.contract_checker import check_contract_compliance
 from engine.decision_gates import DecisionRequired, decision_exists, load_decision
 from engine.evidence import (
     auto_detect_checks,
@@ -200,6 +201,13 @@ def test_system() -> None:
             sandbox_meta = _run_checks_sandboxed(checks, project_dir, sandbox_cfg)
         else:
             _run_checks_direct(checks, project_dir)
+
+    # ── Contract compliance check ────────────────────────────────────────
+    # If a design contract exists, verify the output matches it.
+    contract_path = get_state_dir() / "designs" / "DESIGN_CONTRACT.json"
+    if contract_path.exists():
+        compliance = check_contract_compliance(contract_path, project_dir)
+        save_evidence(compliance.to_evidence_record())
 
     evidence = load_all_evidence()
     summary = _build_test_summary(evidence)

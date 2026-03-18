@@ -82,14 +82,13 @@ def auto_detect_checks(project_dir: Path) -> list[dict]:
 
         scripts = pkg.get("scripts", {})
 
-        # TypeScript type-check (catches the most bugs for the cost)
+        # ALWAYS run TypeScript type-check if TypeScript is present
         if "typecheck" in scripts:
             checks.append({"name": "typecheck", "command": "npm run typecheck"})
         elif _has_ts_dependency(pkg):
-            # No script, but typescript is a dep — run tsc directly
             checks.append({"name": "typecheck", "command": "npx tsc --noEmit"})
 
-        # Build
+        # Build — always try if script exists (this is a critical check)
         if "build" in scripts:
             checks.append({"name": "build", "command": "npm run build"})
 
@@ -99,8 +98,6 @@ def auto_detect_checks(project_dir: Path) -> list[dict]:
 
         # Test
         if "test" in scripts:
-            # Skip if test script is the default CRA "react-scripts test"
-            # which hangs in CI (requires --watchAll=false)
             test_cmd = scripts["test"]
             if "react-scripts test" in test_cmd:
                 checks.append(
@@ -134,6 +131,19 @@ def auto_detect_checks(project_dir: Path) -> list[dict]:
         elif setup_path.exists():
             checks.append({"name": "install", "command": "pip install -e ."})
 
+        # ALWAYS run syntax check — catches truncated files and basic errors
+        checks.append({
+            "name": "syntax-check",
+            "command": "python -m py_compile $(find . -name '*.py' -not -path './.*')"
+                       " && echo 'All files compile'",
+        })
+
+        # ALWAYS run import validation — catches cross-file import errors
+        checks.append({
+            "name": "import-check",
+            "command": _build_python_import_check_command(project_dir),
+        })
+
         # Read pyproject.toml for tool configs
         pyproject_text = ""
         if pyproject_path.exists():
@@ -148,13 +158,11 @@ def auto_detect_checks(project_dir: Path) -> list[dict]:
         elif (project_dir / "tests").is_dir():
             checks.append({"name": "test", "command": "python -m pytest"})
 
-        # ruff
-        if "[tool.ruff" in pyproject_text:
-            checks.append({"name": "lint", "command": "python -m ruff check ."})
+        # ruff — always attempt, it's fast and catches real issues
+        checks.append({"name": "lint", "command": "python -m ruff check . --select E,F --ignore E501"})
 
-        # mypy
-        if "[tool.mypy" in pyproject_text:
-            checks.append({"name": "typecheck", "command": "python -m mypy ."})
+        # mypy — always attempt for type safety
+        checks.append({"name": "typecheck", "command": "python -m mypy . --ignore-missing-imports --no-error-summary"})
 
         logger.info(
             "Auto-detected %d check(s) from Python project: %s",
@@ -173,6 +181,42 @@ def _has_ts_dependency(pkg: dict) -> bool:
         if "typescript" in (pkg.get(key) or {}):
             return True
     return False
+
+
+def _build_python_import_check_command(project_dir: Path) -> str:
+    """Build a shell command that validates all Python imports resolve.
+
+    Uses ``python -c`` to attempt importing each module found in the project.
+    This catches cross-file import errors that syntax checking alone misses.
+    """
+    py_files = list(project_dir.rglob("*.py"))
+    if not py_files:
+        return "echo 'No Python files found'"
+
+    # Build a script that tries to import each module
+    # Using ast to extract imports, then attempting them
+    return (
+        "python -c \""
+        "import ast, sys, pathlib; "
+        "errors = []; "
+        "files = list(pathlib.Path('.').rglob('*.py')); "
+        "[("
+        "  tree := ast.parse(f.read_text()), "
+        "  [errors.append(f'{f}:{node.lineno}: cannot resolve {node.module}') "
+        "   for node in ast.walk(tree) "
+        "   if isinstance(node, ast.ImportFrom) and node.module "
+        "   and not any(("
+        "     pathlib.Path(node.module.replace('.', '/') + '.py').exists(), "
+        "     pathlib.Path(node.module.replace('.', '/')).is_dir(), "
+        "     node.module.split('.')[0] in sys.stdlib_module_names "
+        "     if hasattr(sys, 'stdlib_module_names') else False, "
+        "   ))]"
+        ") for f in files if f.name != '__init__.py']; "
+        "print(f'{len(files)} files checked, {len(errors)} import issue(s)'); "
+        "[print(e) for e in errors]; "
+        "sys.exit(1 if errors else 0)"
+        "\""
+    )
 
 
 # ── Command execution ────────────────────────────────────────────────────────

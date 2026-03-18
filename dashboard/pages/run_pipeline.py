@@ -13,6 +13,7 @@ from dashboard.data_loader import (
     get_pipeline_status,
     is_intake_complete,
     list_runs,
+    load_evidence,
     load_trace,
 )
 
@@ -168,6 +169,69 @@ def _render_cost_estimate(project_dir):
     return None
 
 
+# ── Completion status (evidence-based) ───────────────────────────────────────
+
+def _render_completion_status(project_dir):
+    """Show pipeline completion status based on actual test evidence.
+
+    Instead of blindly saying 'success', this reads the evidence records
+    and shows pass/fail/warning counts so the user sees the real picture.
+    """
+    run_id = get_latest_run_id(project_dir)
+    if not run_id:
+        st.success("Pipeline completed.")
+        return
+
+    evidence = load_evidence(project_dir, run_id)
+    if not evidence:
+        st.success("Pipeline completed (no test evidence recorded).")
+        return
+
+    # Filter out the sentinel "no_checks_configured" record
+    real_checks = [r for r in evidence if r.get("name") != "no_checks_configured"]
+    if not real_checks:
+        st.info(
+            "Pipeline completed — no automated checks were configured. "
+            "Add a `checks` section to `config.yml` to enable real test execution."
+        )
+        return
+
+    passed = sum(1 for r in real_checks if r.get("exit_code") == 0)
+    failed = len(real_checks) - passed
+
+    if failed == 0:
+        st.success(f"Pipeline completed — all {passed} check(s) passed.")
+    else:
+        st.error(f"Pipeline completed with failures — {failed} of {len(real_checks)} check(s) failed.")
+
+    # Inline summary of each check
+    with st.expander("Test Evidence Details", expanded=failed > 0):
+        for r in real_checks:
+            name = r.get("name", "unnamed")
+            exit_code = r.get("exit_code", -1)
+            icon = "✅" if exit_code == 0 else "❌"
+
+            st.markdown(f"{icon} **{name}** — exit code `{exit_code}`")
+
+            # Show stderr for failures (most useful diagnostic info)
+            if exit_code != 0:
+                stderr = r.get("stderr", "").strip()
+                stdout = r.get("stdout", "").strip()
+                diagnostic = stderr or stdout
+                if diagnostic:
+                    # Truncate for the UI but show enough to be useful
+                    if len(diagnostic) > 1500:
+                        diagnostic = diagnostic[:750] + "\n... (truncated) ...\n" + diagnostic[-750:]
+                    st.code(diagnostic, language=None)
+
+        # Contract compliance gets special treatment
+        compliance = next((r for r in real_checks if r.get("name") == "contract-compliance"), None)
+        if compliance:
+            stdout = compliance.get("stdout", "")
+            if "FAIL" in stdout:
+                st.warning("Contract compliance issues detected — the output does not fully match the design contract.")
+
+
 # ── Main page render ────────────────────────────────────────────────────────
 
 def render(project_dir):
@@ -239,7 +303,7 @@ def render(project_dir):
             elif proc is not None:
                 rc = proc.poll()
                 if rc == 0:
-                    st.success("Pipeline completed successfully.")
+                    _render_completion_status(project_dir)
                 else:
                     st.error(f"Pipeline exited with code {rc}.")
                     try:

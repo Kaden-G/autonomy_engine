@@ -3,6 +3,9 @@ You are a project reviewer. Produce a final verification report based on real ex
 ## Execution Evidence
 {evidence}
 
+## Structural Issue Analysis
+{structural_analysis}
+
 ## Acceptance Criteria
 {acceptance_criteria}
 
@@ -14,5 +17,11 @@ You are a project reviewer. Produce a final verification report based on real ex
 - For each acceptance criterion, assess whether the execution evidence supports it.
 - Base your assessment on real evidence (exit codes, test output), not assumptions.
 - If no checks were executed, note this as a gap in verification coverage.
+- Pay special attention to the **Structural Issue Analysis** section:
+  - **Type errors** indicate the canonical type schema was not respected across chunks.
+  - **Import errors** indicate the component dependency graph was violated.
+  - **Contract compliance issues** indicate the output diverged from the design contract.
+  - These structural issues are more severe than lint warnings — they indicate fundamental build-time failures.
+- For REJECTED assessments, clearly identify the root cause category (types, imports, contract, build, tests).
 - List any unresolved issues or risks.
 - Provide a clear go/no-go recommendation with rationale.

@@ -4,16 +4,17 @@ from datetime import datetime
 
 import streamlit as st
 
-
-TASK_COLORS = {
-    "bootstrap": "#3498DB",
-    "design": "#9B59B6",
-    "implement": "#E67E22",
-    "extract": "#1ABC9C",
-    "test": "#2ECC71",
-    "verify": "#E74C3C",
-    "decision": "#F39C12",
-}
+from dashboard.theme import (
+    BG_SURFACE_DARK,
+    FONT_BODY,
+    FONT_SMALL,
+    RADIUS,
+    STAGE_COLORS,
+    TEXT_BODY,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+    chip,
+)
 
 
 def render_timeline(entries: list[dict]):
@@ -24,7 +25,7 @@ def render_timeline(entries: list[dict]):
 
     for entry in entries:
         task = entry.get("task", "unknown")
-        color = TASK_COLORS.get(task, "#95A5A6")
+        color = STAGE_COLORS.get(task, TEXT_MUTED)
         seq = entry.get("seq", "?")
         ts = entry.get("timestamp", "")
         model = entry.get("model")
@@ -40,35 +41,30 @@ def render_timeline(entries: list[dict]):
         # Build detail chips
         chips = []
         if model:
-            chips.append(f"🤖 {model}")
+            chips.append(chip(f"🤖 {model}"))
         if extra.get("cache_hit"):
-            chips.append("⚡ Cache Hit")
+            chips.append(chip("⚡ Cache Hit"))
         if extra.get("llm_called") is False:
-            chips.append("🚫 LLM Skipped")
+            chips.append(chip("🚫 LLM Skipped"))
         if extra.get("verify_mode"):
-            chips.append(f"🔧 {extra['verify_mode']}")
+            chips.append(chip(f"🔧 {extra['verify_mode']}"))
         if extra.get("sandbox_venv_cache_hit"):
-            chips.append("📦 Venv Cached")
+            chips.append(chip("📦 Venv Cached"))
 
-        chip_html = " ".join(
-            f'<span style="background:#f0f0f0; padding:2px 8px; border-radius:12px; '
-            f'font-size:11px; margin-right:4px;">{c}</span>'
-            for c in chips
-        )
+        chip_html = " ".join(chips)
 
-        # Render entry
         st.markdown(
-            f"""<div style="display:flex; gap:12px; margin-bottom:12px;
+            f"""<div style="display:flex; gap:12px; margin-bottom:10px;
                     padding:12px; border-left:4px solid {color};
-                    background-color:{color}08; border-radius:0 8px 8px 0;">
+                    background-color:{color}08; border-radius:0 {RADIUS} {RADIUS} 0;">
                 <div style="min-width:32px; text-align:center;">
                     <div style="font-size:18px; font-weight:700; color:{color};">
                         {seq}
                     </div>
-                    <div style="font-size:10px; color:#95A5A6;">{time_str}</div>
+                    <div style="font-size:{FONT_SMALL}; color:{TEXT_MUTED};">{time_str}</div>
                 </div>
                 <div style="flex:1;">
-                    <div style="font-weight:600; color:#2C3E50; font-size:14px;
+                    <div style="font-weight:600; color:{TEXT_PRIMARY}; font-size:{FONT_BODY};
                          text-transform:uppercase; letter-spacing:0.5px;">
                         {task}
                     </div>

@@ -4,24 +4,37 @@ import json
 
 import streamlit as st
 
+from dashboard.components.page_header import render_page_description
 from dashboard.data_loader import (
     list_runs,
     load_trace,
     verify_trace_integrity,
 )
+from dashboard.theme import (
+    BG_SURFACE,
+    BORDER,
+    FONT_BODY,
+    FONT_SMALL,
+    MUTED,
+    RADIUS,
+    STATUS_FAILED,
+    STATUS_PASSED,
+    TEXT_BODY,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+)
 
 
 def render(project_dir):
-    st.title("🔒 Audit Trail")
+    st.title("Audit Trail")
 
-    from dashboard.components.page_header import render_page_description
     render_page_description(
         "Verify the integrity of any pipeline run. Every trace entry is cryptographically "
         "chained to the previous one via SHA-256 — if any entry is modified, inserted, or "
-        "deleted, the chain breaks. The <strong>Integrity Verification</strong> section shows "
-        "a pass/fail check. Below that, the <strong>Hash Chain Visualization</strong> displays "
-        "each entry's hash linked to the previous one (green = valid link, red = break). "
-        "Use <strong>Export</strong> at the bottom to download the raw trace or a signed audit report."
+        "deleted, the chain breaks. The Integrity Verification section shows "
+        "a pass/fail check. Below, the Hash Chain Visualization displays "
+        "each entry's hash linked to the previous one. "
+        "Use Export at the bottom to download the raw trace or audit report."
     )
 
     runs = list_runs(project_dir)
@@ -39,15 +52,9 @@ def render(project_dir):
     is_valid, errors = verify_trace_integrity(project_dir, selected)
 
     if is_valid:
-        st.success(
-            "✅ **INTEGRITY VERIFIED** — Hash chain is intact. No tampering detected.",
-            icon="🔐",
-        )
+        st.success("INTEGRITY VERIFIED — Hash chain is intact. No tampering detected.")
     else:
-        st.error(
-            "❌ **INTEGRITY FAILURE** — Hash chain is broken. Possible tampering detected.",
-            icon="🚨",
-        )
+        st.error("INTEGRITY FAILURE — Hash chain is broken. Possible tampering detected.")
         for err in errors:
             st.error(err)
 
@@ -78,26 +85,26 @@ def render(project_dir):
             chain_ok = is_genesis
 
         chain_icon = "🔗" if chain_ok else "💔"
-        chain_color = "#27AE60" if chain_ok else "#E74C3C"
+        chain_color = STATUS_PASSED if chain_ok else STATUS_FAILED
 
         st.markdown(
-            f"""<div style="border:1px solid {chain_color}; border-radius:8px;
+            f"""<div style="border:1px solid {chain_color}; border-radius:{RADIUS};
                     padding:12px; margin-bottom:8px; background:{chain_color}08;">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <div>
-                        <span style="font-size:16px; font-weight:700;">
+                        <span style="font-size:{FONT_BODY}; font-weight:700; color:{TEXT_PRIMARY};">
                             {chain_icon} Entry {seq}: {task.upper()}
                         </span>
-                        <span style="color:#95A5A6; margin-left:12px; font-size:12px;">
+                        <span style="color:{TEXT_MUTED}; margin-left:12px; font-size:{FONT_SMALL};">
                             {ts[:19] if ts else ""}
                         </span>
                     </div>
                 </div>
-                <div style="font-family:monospace; font-size:11px; margin-top:8px; color:#7F8C8D;">
-                    prev: {prev_hash[:32]}...
+                <div style="font-family:monospace; font-size:11px; margin-top:8px; color:{TEXT_MUTED};">
+                    prev: {prev_hash[:32]}…
                 </div>
-                <div style="font-family:monospace; font-size:11px; color:#2C3E50; font-weight:600;">
-                    hash: {entry_hash[:32]}...
+                <div style="font-family:monospace; font-size:11px; color:{TEXT_PRIMARY}; font-weight:600;">
+                    hash: {entry_hash[:32]}…
                 </div>
             </div>""",
             unsafe_allow_html=True,
@@ -106,7 +113,8 @@ def render(project_dir):
         # Draw chain arrow between entries
         if i < len(entries) - 1:
             st.markdown(
-                '<div style="text-align:center; color:#BDC3C7; font-size:18px; margin:-4px 0;">↓</div>',
+                f'<div style="text-align:center; color:{MUTED}; font-size:18px;'
+                f' margin:-4px 0;">↓</div>',
                 unsafe_allow_html=True,
             )
 
@@ -118,7 +126,7 @@ def render(project_dir):
     with col1:
         trace_json = json.dumps(entries, indent=2)
         st.download_button(
-            "📥 Download Trace (JSON)",
+            "Download Trace (JSON)",
             data=trace_json,
             file_name=f"trace_{selected}.json",
             mime="application/json",
@@ -139,7 +147,7 @@ def render(project_dir):
             ],
         }
         st.download_button(
-            "📥 Download Audit Report (JSON)",
+            "Download Audit Report (JSON)",
             data=json.dumps(audit_report, indent=2),
             file_name=f"audit_{selected}.json",
             mime="application/json",

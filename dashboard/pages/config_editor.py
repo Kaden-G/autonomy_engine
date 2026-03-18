@@ -3,19 +3,19 @@
 import streamlit as st
 import yaml
 
+from dashboard.components.page_header import render_page_description
 from dashboard.data_loader import load_config, load_gate_policies
 
 
 def render(project_dir):
-    st.title("⚙️ Configuration")
+    st.title("Configuration")
 
-    from dashboard.components.page_header import render_page_description
     render_page_description(
-        "View the active settings for this project. <strong>LLM Provider</strong> shows which "
-        "model and token budget each stage uses. <strong>Decision Gate Policies</strong> control "
+        "View the active settings for this project. LLM Provider shows which "
+        "model and token budget each stage uses. Decision Gate Policies control "
         "what happens at review points (auto-approve, pause for human input, or skip). "
-        "<strong>Verify Settings</strong> determines when the LLM is called for the final verdict. "
-        "<strong>Sandbox</strong> controls test isolation. To change settings, edit "
+        "Verify Settings determines when the LLM is called for the final verdict. "
+        "Sandbox controls test isolation. To change settings, edit "
         "<code>config.yml</code> directly — changes take effect on the next run."
     )
 
@@ -53,8 +53,8 @@ def render(project_dir):
             policy = gate_cfg.get("policy", "skip") if isinstance(gate_cfg, dict) else gate_cfg
             default_opt = gate_cfg.get("default_option") if isinstance(gate_cfg, dict) else None
 
-            policy_colors = {"pause": "🟡", "auto": "🟢", "skip": "🔵"}
-            icon = policy_colors.get(policy, "⚪")
+            policy_icons = {"pause": "⏸", "auto": "▶", "skip": "⏭"}
+            icon = policy_icons.get(policy, "·")
 
             st.markdown(
                 f"{icon} **{stage}**: `{policy}`"
@@ -105,5 +105,5 @@ def render(project_dir):
     st.divider()
 
     # Raw config
-    with st.expander("📝 Raw config.yml"):
+    with st.expander("Raw config.yml"):
         st.code(yaml.dump(config, default_flow_style=False), language="yaml")

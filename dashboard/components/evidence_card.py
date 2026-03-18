@@ -2,6 +2,8 @@
 
 import streamlit as st
 
+from dashboard.theme import STATUS_FAILED, STATUS_PASSED, TEXT_BODY, TEXT_MUTED
+
 
 def render_evidence_card(record: dict):
     """Render a single evidence record as an expandable card."""
@@ -14,11 +16,12 @@ def render_evidence_card(record: dict):
         return
 
     passed = exit_code == 0
-    status_icon = "✅" if passed else "❌"
+    status_icon = "✓" if passed else "✗"
     status_text = "PASSED" if passed else "FAILED"
+    status_color = STATUS_PASSED if passed else STATUS_FAILED
 
     with st.expander(
-        f"{status_icon} **{name}** — {status_text} (exit {exit_code})",
+        f"{status_icon}  **{name}** — {status_text} (exit {exit_code})",
         expanded=not passed,
     ):
         st.code(command, language="bash")

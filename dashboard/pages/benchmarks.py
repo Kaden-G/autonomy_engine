@@ -3,20 +3,21 @@
 import plotly.graph_objects as go
 import streamlit as st
 
+from dashboard.components.page_header import render_page_description
 from dashboard.data_loader import get_cache_stats, list_benchmark_results
+from dashboard.theme import STAGE_COLORS
 
 
 def render(project_dir):
-    st.title("📊 Benchmarks")
+    st.title("Benchmarks")
 
-    from dashboard.components.page_header import render_page_description
     render_page_description(
-        "Track pipeline performance over time. The <strong>Summary</strong> shows wall time "
-        "and model call counts for a benchmark run. <strong>Per-Stage Timing</strong> breaks "
-        "down how long each stage takes (design, implement, etc.). "
-        "<strong>Cache Performance</strong> shows the hit rate — higher means more free re-runs. "
-        "Use <strong>Compare Two Results</strong> at the bottom to see how changes to your config "
-        "or prompts affect speed and cost across commits."
+        "Track pipeline performance over time. The Summary shows wall time "
+        "and model call counts for a benchmark run. Per-Stage Timing breaks "
+        "down how long each stage takes. "
+        "Cache Performance shows the hit rate — higher means more free re-runs. "
+        "Use Compare Two Results at the bottom to see how config "
+        "or prompt changes affect speed and cost."
     )
 
     results = list_benchmark_results(project_dir)
@@ -60,19 +61,15 @@ def render(project_dir):
             times = [r["stage_wall_s"].get(stage, 0) for r in runs]
             avg_times.append(sum(times) / len(times))
 
+        # Use theme stage colors
+        bar_colors = [STAGE_COLORS.get(s, "#94A3B8") for s in stages]
+
         fig = go.Figure(
             data=[
                 go.Bar(
                     x=stages,
                     y=avg_times,
-                    marker_color=[
-                        "#3498DB",
-                        "#9B59B6",
-                        "#E67E22",
-                        "#1ABC9C",
-                        "#2ECC71",
-                        "#E74C3C",
-                    ],
+                    marker_color=bar_colors,
                     text=[f"{t:.1f}s" for t in avg_times],
                     textposition="outside",
                 )

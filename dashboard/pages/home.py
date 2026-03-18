@@ -2,26 +2,28 @@
 
 import streamlit as st
 
+from dashboard.components.page_header import render_page_description
 from dashboard.components.pipeline_visual import render_pipeline
 from dashboard.data_loader import (
     get_cache_stats,
     get_intake_status,
+    get_latest_run_id,
     get_pipeline_status,
     list_runs,
+    load_evidence,
     load_project_spec,
 )
+from dashboard.theme import TEXT_BODY, TEXT_MUTED, TEXT_PRIMARY
 
 
 def render(project_dir):
-    st.title("🏗️ Autonomy Engine Dashboard")
+    st.title("Autonomy Engine")
 
-    from dashboard.components.page_header import render_page_description
     render_page_description(
-        "Your project at a glance. The <strong>pipeline status</strong> bar shows which stages "
-        "have completed (green) or are pending (gray). Below, <strong>Recent Runs</strong> "
-        "lists past executions — expand any run to see its trace count and jump to the "
-        "Run Inspector. The <strong>Cache</strong> panel shows how many LLM responses are "
-        "cached (cached calls are free and instant on re-runs)."
+        "Your project at a glance. The pipeline status bar shows which stages "
+        "have completed, failed, or are pending. Recent Runs lists past executions "
+        "— expand any run to see its trace count and jump to the Inspector. "
+        "The Cache panel shows how many LLM responses are cached."
     )
 
     # Project info
@@ -38,10 +40,12 @@ def render(project_dir):
 
     st.divider()
 
-    # Pipeline status
+    # Pipeline status — pass evidence so stages reflect real pass/fail
     st.subheader("Pipeline Status")
     pipeline_status = get_pipeline_status(project_dir)
-    render_pipeline(pipeline_status)
+    run_id = get_latest_run_id(project_dir)
+    evidence = load_evidence(project_dir, run_id) if run_id else []
+    render_pipeline(pipeline_status, evidence=evidence)
 
     # Intake check
     intake = get_intake_status(project_dir)
@@ -67,18 +71,18 @@ def render(project_dir):
                     started = started[:19].replace("T", " ")
                 stages = " → ".join(run.get("stages", []))
                 entries = run["trace_entries"]
-                evidence = run["evidence_count"]
+                ev_count = run["evidence_count"]
                 decisions = run["decision_count"]
 
                 with st.expander(
-                    f"🔹 **{run_id}** — {entries} trace entries · "
-                    f"{evidence} evidence · {decisions} decisions"
+                    f"**{run_id[:12]}…** — {entries} traces · "
+                    f"{ev_count} evidence · {decisions} decisions"
                 ):
                     st.caption(f"Started: {started}")
                     st.caption(f"Stages: {stages}")
                     if st.button("Inspect Run →", key=f"inspect_{run_id}"):
                         st.session_state["selected_run"] = run_id
-                        st.session_state["page"] = "Run Inspector"
+                        st.session_state["page"] = "Inspector"
                         st.rerun()
 
     with col2:

@@ -41,11 +41,11 @@ def render(project_dir):
     from dashboard.components.page_header import render_page_description
     render_page_description(
         "Define what you want to build. Fill in the form below — "
-        "<strong>required fields</strong> are marked with *. "
+        "required fields are marked with *. "
         "Your inputs auto-save, so you can navigate away and come back "
         "without losing work. On submit, the engine generates intake artifacts "
         "(requirements, constraints, acceptance criteria) that feed into the pipeline. "
-        "After creating your project, head to <strong>Run Pipeline</strong> to start the build."
+        "After creating your project, head to Run Pipeline to start the build."
     )
 
     _init_session_defaults()

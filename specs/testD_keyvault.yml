@@ -1,0 +1,75 @@
+project:
+  name: keykeeper
+  description: >
+    A local API key vault with role-based access control and immutable audit
+    logging.  Users authenticate via short-lived JWT tokens, store encrypted
+    API keys (AES-256-GCM), and retrieve them through a REST API.  Every
+    read, write, and delete operation is recorded in an append-only audit log
+    that cannot be modified after creation.  Designed for developer teams who
+    need a lightweight, self-hosted alternative to HashiCorp Vault for
+    managing third-party API credentials.
+  domain: software
+
+requirements:
+  functional:
+    - Register a new user with username, email, and password (bcrypt hashed)
+    - Authenticate a user and return a short-lived JWT access token (15 min expiry)
+    - Store a new API key with a label, provider name, and encrypted value (AES-256-GCM)
+    - Retrieve a decrypted API key by ID (requires valid JWT and appropriate role)
+    - List all API keys for the authenticated user (metadata only, no decrypted values)
+    - Delete an API key by ID (soft-delete with tombstone, not physical removal)
+    - Assign roles to users (admin, member, readonly) — only admins can assign roles
+    - Record every vault operation in an append-only audit log with actor, action, target, timestamp, and IP address
+    - Query audit log entries by actor, action type, or date range
+    - Health check endpoint returning service status, uptime, and vault entry count
+  non_functional:
+    - All endpoints must respond within 200ms under normal load
+    - Encrypted key values must never appear in logs, error messages, or API responses (except the explicit decrypt endpoint)
+    - Audit log entries must be immutable — no update or delete operations permitted on the audit table
+    - JWT tokens must be validated on every protected endpoint (middleware, not per-handler)
+    - Failed authentication attempts must be rate-limited (max 5 per minute per IP)
+    - The service must start and respond to health checks within 3 seconds
+
+constraints:
+  tech_stack:
+    - Python 3.11+
+    - FastAPI for the REST API framework
+    - SQLite for storage (single-file database, no external dependencies)
+    - Pydantic v2 for request/response models and validation
+    - python-jose for JWT token creation and validation
+    - cryptography library for AES-256-GCM encryption/decryption
+    - bcrypt for password hashing
+    - uvicorn as the ASGI server
+  performance: "All API responses under 200ms for single-user load; SQLite WAL mode for concurrent reads"
+  security: "AES-256-GCM for key encryption at rest; bcrypt for passwords; JWT with short expiry; audit log append-only; no plaintext secrets in logs or error responses"
+
+non_goals:
+  - Multi-tenancy or organization-level isolation
+  - Key rotation or automatic expiry of stored API keys
+  - Web UI or frontend — API only
+  - Clustering, replication, or high-availability
+  - Integration with external identity providers (LDAP, SAML, OAuth)
+  - Secrets versioning or rollback
+
+acceptance_criteria:
+  - A new user can register and receive a JWT token via the auth endpoints
+  - An authenticated user can store, list, and retrieve API keys
+  - Retrieved API key values are decrypted correctly and match the original plaintext
+  - A readonly user cannot store or delete keys (returns 403)
+  - An admin can assign roles to other users
+  - Every vault operation produces an audit log entry with correct actor and action
+  - Audit log entries cannot be modified or deleted via any API endpoint
+  - The health check endpoint returns valid JSON with status, uptime, and entry count
+  - No plaintext API key values appear in audit log entries or error responses
+  - Failed login attempts are rate-limited after 5 consecutive failures
+
+outputs:
+  expected_artifacts:
+    - main.py (FastAPI application entry point with uvicorn runner)
+    - models.py (Pydantic models and SQLAlchemy/SQLite table definitions)
+    - auth.py (JWT creation, validation, password hashing, rate limiting)
+    - vault.py (encryption/decryption logic, CRUD operations for stored keys)
+    - audit.py (append-only audit logger with query support)
+    - middleware.py (JWT auth middleware, rate limiter, request logging)
+    - config.py (environment-based configuration with sensible defaults)
+    - requirements.txt

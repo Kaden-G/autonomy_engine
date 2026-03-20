@@ -140,8 +140,10 @@ def check_contract_compliance(
     for path in project_dir.rglob("*"):
         if path.is_file():
             rel = str(path.relative_to(project_dir))
-            # Skip node_modules, __pycache__, .git, etc.
-            if any(skip in rel for skip in ("node_modules/", "__pycache__/", ".git/", ".env")):
+            # Skip node_modules, __pycache__, .git, .venv, etc.
+            if any(skip in rel for skip in (
+                "node_modules/", "__pycache__/", ".git/", ".env", ".venv/",
+            )):
                 continue
             actual_files.add(rel)
 
@@ -167,7 +169,18 @@ def check_contract_compliance(
         "postcss.config.js", "tailwind.config.js", "tailwind.config.ts",
         "requirements.txt", "pyproject.toml", "setup.py", "setup.cfg",
         "README.md", ".gitignore", "index.html", "Makefile",
+        "DESIGN_CONTRACT.json",
     }
+    # __init__.py files are structural necessities in Python packages —
+    # the LLM often omits them from the contract but they MUST exist.
+    # Also allow common entry-point files (run.py, app.py, manage.py, main.py at root).
+    _PYTHON_STRUCTURAL = {"run.py", "app.py", "manage.py", "wsgi.py", "asgi.py"}
+    for f in list(actual_files):
+        basename = Path(f).name
+        if basename == "__init__.py":
+            expected_extras.add(f)
+        elif basename in _PYTHON_STRUCTURAL and "/" not in f:
+            expected_extras.add(f)
     extra = actual_files - expected_files - expected_extras
     for f in sorted(extra):
         issues.append(ComplianceIssue(
@@ -188,10 +201,13 @@ def check_contract_compliance(
             ))
 
     # ── Total budget check ──
-    if len(actual_files) > total_budget:
+    # Only count substantive files against budget (exclude structural extras)
+    budgeted_files = actual_files - expected_extras
+    if len(budgeted_files) > total_budget:
         issues.append(ComplianceIssue(
             "error", "budget", "project",
-            f"Total files ({len(actual_files)}) exceeds budget ({total_budget}).",
+            f"Total files ({len(budgeted_files)}) exceeds budget ({total_budget})."
+            f" ({len(actual_files)} total including {len(actual_files - budgeted_files)} structural extras)",
         ))
 
     # ── Canonical type checks ──

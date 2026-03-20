@@ -187,6 +187,56 @@ def _build_manifest(extracted_files: list[str], output_dir: Path) -> str:
     return "\n".join(lines)
 
 
+_DEV_TOOLS = ["ruff", "mypy"]
+
+
+def _sanitize_requirements(project_dir: Path) -> None:
+    """Fix common LLM mistakes in generated requirements.txt.
+
+    1. Relax exact pins (==X.Y.Z) → compatible release (~=X.Y) so that
+       hallucinated patch versions (e.g. cryptography==41.0.8) don't break pip.
+    2. Inject dev tools (ruff, mypy) if not already present.
+    """
+    req_path = project_dir / "requirements.txt"
+    if not req_path.exists():
+        return
+
+    lines = req_path.read_text().splitlines()
+    sanitized: list[str] = []
+    present_packages: set[str] = set()
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            sanitized.append(raw_line)
+            continue
+
+        # Extract package name (before any version specifier)
+        pkg_match = re.match(r"^([A-Za-z0-9_.-]+)", line)
+        if pkg_match:
+            present_packages.add(pkg_match.group(1).lower())
+
+        # Relax exact pins: cryptography==41.0.8 → cryptography~=41.0
+        # This uses "compatible release" — allows 41.0.x but not 42.x
+        pin_match = re.match(
+            r"^([A-Za-z0-9_.-]+)==(\d+)\.(\d+)\.(\d+)(.*)", line
+        )
+        if pin_match:
+            pkg, major, minor, _patch, extras = pin_match.groups()
+            sanitized.append(f"{pkg}~={major}.{minor}{extras}")
+            logger.info("Relaxed pin: %s → %s~=%s.%s", line, pkg, major, minor)
+        else:
+            sanitized.append(raw_line)
+
+    # Inject dev tools if missing
+    for tool in _DEV_TOOLS:
+        if tool.lower() not in present_packages:
+            sanitized.append(tool)
+            logger.info("Injected dev tool: %s", tool)
+
+    req_path.write_text("\n".join(sanitized) + "\n")
+
+
 @task(name="extract")
 def extract_project() -> None:
     """Load FILE_MANIFEST.json, validate schema, write files to project folder."""
@@ -213,6 +263,9 @@ def extract_project() -> None:
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(entry.content + "\n")
         written_paths.append(entry.path)
+
+    # Post-extraction: sanitize requirements.txt (relax exact pins, add dev tools)
+    _sanitize_requirements(output_dir)
 
     # Generate and save manifest
     build_manifest = _build_manifest(written_paths, output_dir)

@@ -134,7 +134,7 @@ def auto_detect_checks(project_dir: Path) -> list[dict]:
         # ALWAYS run syntax check — catches truncated files and basic errors
         checks.append({
             "name": "syntax-check",
-            "command": "python -m py_compile $(find . -name '*.py' -not -path './.*')"
+            "command": "python -m py_compile $(find . -name '*.py' -not -path './.venv/*' -not -path './venv/*' -not -path './.*')"
                        " && echo 'All files compile'",
         })
 
@@ -195,11 +195,14 @@ def _build_python_import_check_command(project_dir: Path) -> str:
 
     # Build a script that tries to import each module
     # Using ast to extract imports, then attempting them
+    # Exclude .venv, venv, node_modules, __pycache__, .git — only check project source
     return (
         "python -c \""
         "import ast, sys, pathlib; "
         "errors = []; "
-        "files = list(pathlib.Path('.').rglob('*.py')); "
+        "_SKIP = {'.venv', 'venv', 'node_modules', '__pycache__', '.git', '.tox', '.nox'}; "
+        "files = [f for f in pathlib.Path('.').rglob('*.py') "
+        "  if not any(part in _SKIP for part in f.parts)]; "
         "[("
         "  tree := ast.parse(f.read_text()), "
         "  [errors.append(f'{f}:{node.lineno}: cannot resolve {node.module}') "

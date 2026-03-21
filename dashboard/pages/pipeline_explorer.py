@@ -16,7 +16,6 @@ from dashboard.theme import (
     BG_SURFACE_DARK,
     BORDER,
     FONT_BODY,
-    FONT_H3,
     FONT_SMALL,
     INFO,
     MUTED,
@@ -34,7 +33,10 @@ from dashboard.theme import (
 
 # ── Stage definitions ──────────────────────────────────────────────────────
 # Each stage has: key, label, color, icon, plain-english summary,
-# inputs, outputs (with descriptions), and a "why it matters" blurb.
+# inputs, outputs (with descriptions + file paths), and a "why it matters" blurb.
+#
+# Output tuples: (display_name, description, file_path_or_empty)
+# File paths use <run> as placeholder for the current run ID.
 
 PIPELINE_STAGES = [
     {
@@ -44,7 +46,7 @@ PIPELINE_STAGES = [
         "color": "#94A3B8",  # Slate — human-driven, pre-pipeline
         "summary": (
             "You describe what you want to build.  The engine captures your "
-            "requirements, goals, non-goals, and tech preferences into a "
+            "requirements, goals, non-goals, and constraints into a "
             "structured spec that machines can work with."
         ),
         "who": "You (human)",
@@ -52,11 +54,21 @@ PIPELINE_STAGES = [
             ("Your idea", "A project description — what it does, who it's for, what's in and out of scope"),
         ],
         "outputs": [
-            ("project_spec.yml", "Your requirements in a machine-readable format — the single source of truth for the entire pipeline"),
-            ("REQUIREMENTS.md", "A human-friendly rendering of the spec, useful for reviews and stakeholder alignment"),
-            ("GOALS.md", "Explicit goals and non-goals so the AI knows where to stop"),
-            ("TECH_DECISIONS.md", "Locked-in technology choices (language, framework, database) with rationale"),
-            ("SYSTEM_PROMPT.md", "The tailored instructions the AI will receive — shaped by your spec, not generic"),
+            ("project_spec.yml",
+             "Your requirements in a machine-readable format — the single source of truth for the entire pipeline",
+             "state/inputs/project_spec.yml"),
+            ("REQUIREMENTS.md",
+             "A human-friendly rendering of the functional and non-functional requirements",
+             "state/inputs/REQUIREMENTS.md"),
+            ("CONSTRAINTS.md",
+             "Technical constraints and boundaries — languages, frameworks, performance targets",
+             "state/inputs/CONSTRAINTS.md"),
+            ("NON_GOALS.md",
+             "Explicit non-goals so the AI knows where to stop — things that are deliberately out of scope",
+             "state/inputs/NON_GOALS.md"),
+            ("ACCEPTANCE_CRITERIA.md",
+             "Measurable criteria for deciding whether the generated project meets the spec",
+             "state/inputs/ACCEPTANCE_CRITERIA.md"),
         ],
         "why": (
             "Without a structured spec, the AI would interpret your description "
@@ -79,9 +91,18 @@ PIPELINE_STAGES = [
             ("Intake artifacts", "The five files produced during intake — all must be present"),
         ],
         "outputs": [
-            ("Run ID", "A unique identifier for this pipeline execution (timestamp-based)"),
-            ("trace.jsonl", "The audit log — every subsequent action is recorded here with a tamper-evident signature"),
-            ("HMAC key", "A one-time cryptographic signing key for this run's audit chain (stored securely, not in the log)"),
+            ("Run folder",
+             "A unique directory for this pipeline execution — all subsequent outputs land here",
+             "state/runs/&lt;run-id&gt;/"),
+            ("trace.jsonl",
+             "The audit log — every subsequent action is recorded here with a tamper-evident HMAC signature",
+             "state/runs/&lt;run-id&gt;/trace.jsonl"),
+            ("config_snapshot.yml",
+             "A frozen copy of the engine configuration at the moment the run started",
+             "state/runs/&lt;run-id&gt;/config_snapshot.yml"),
+            (".trace_key",
+             "A one-time cryptographic signing key for this run's audit chain (hidden file, not in the log)",
+             "state/runs/&lt;run-id&gt;/.trace_key"),
         ],
         "why": (
             "Starting the audit trail here means even the earliest pipeline actions "
@@ -104,9 +125,15 @@ PIPELINE_STAGES = [
             ("Tier context", "Budget limits (MVP or Premium) that constrain the design's scope"),
         ],
         "outputs": [
-            ("ARCHITECTURE.md", "A human-readable design document — system overview, component breakdown, data flow"),
-            ("DESIGN_CONTRACT.json", "The binding blueprint — exact file lists, shared data types, dependency maps, and per-component budgets"),
-            ("Decision record", "If a human gate is configured, the approval/redirect decision is recorded in the audit trail"),
+            ("ARCHITECTURE.md",
+             "A human-readable design document — system overview, component breakdown, data flow",
+             "state/designs/ARCHITECTURE.md"),
+            ("DESIGN_CONTRACT.json",
+             "The binding blueprint — exact file lists, shared data types, dependency maps, and per-component budgets",
+             "state/designs/DESIGN_CONTRACT.json"),
+            ("Decision record",
+             "If a human gate is configured, the approval or redirect decision is recorded in the audit trail",
+             "state/runs/&lt;run-id&gt;/decisions/design.json"),
         ],
         "why": (
             "The design contract is the engine's primary defense against AI drift.  "
@@ -124,14 +151,18 @@ PIPELINE_STAGES = [
             "code is generated in chunks — each chunk receives the contract's shared "
             "types and dependency rules so cross-file consistency is maintained."
         ),
-        "who": "AI (automated, contract-guided)",
+        "who": "AI (contract-guided)",
         "inputs": [
             ("DESIGN_CONTRACT.json", "The binding blueprint — tells the AI exactly which files to produce and how they relate"),
             ("Canonical types", "Shared data structures injected verbatim into each chunk prompt, preventing the AI from inventing conflicting versions"),
         ],
         "outputs": [
-            ("Raw AI output", "The full text response from the AI, containing code blocks with file paths"),
-            ("Token usage", "Actual tokens consumed vs. the pre-run estimate — tracked per stage for cost visibility"),
+            ("Raw AI output",
+             "The full text response from the AI, containing fenced code blocks with file paths",
+             "state/implementations/"),
+            ("Token usage",
+             "Actual tokens consumed vs. the pre-run estimate — tracked per stage for cost visibility",
+             "Logged in trace.jsonl"),
         ],
         "why": (
             "Chunk-by-chunk generation with contract injection is what makes large projects "
@@ -149,14 +180,20 @@ PIPELINE_STAGES = [
             "validates paths, and writes a standalone project folder.  No AI involved — "
             "this is pure parsing with safety limits."
         ),
-        "who": "Engine (automated, no AI)",
+        "who": "Engine (no AI)",
         "inputs": [
             ("Raw AI output", "The text containing fenced code blocks with file path headers"),
         ],
         "outputs": [
-            ("Project folder", "A complete, standalone directory with all generated source files"),
-            ("MANIFEST.md", "An inventory of every extracted file — name, size, and line count"),
-            ("Circuit breaker log", "If the output exceeded safety limits (80 files/750KB for MVP, 250 files/5MB for Premium), extraction halts and logs why"),
+            ("Project folder",
+             "A complete, standalone directory with all generated source files — sibling to the engine directory",
+             "../&lt;project-name&gt;/"),
+            ("MANIFEST.md",
+             "An inventory of every extracted file — name, size, and line count",
+             "state/build/MANIFEST.md"),
+            ("Circuit breaker log",
+             "If the output exceeded safety limits (80 files / 750 KB for MVP, 250 files / 5 MB for Premium), extraction halts and logs why",
+             "Logged in trace.jsonl"),
         ],
         "why": (
             "Path traversal protection happens here — the engine rejects any file path "
@@ -174,15 +211,21 @@ PIPELINE_STAGES = [
             "sandbox.  Checks are auto-detected based on project type — you don't need "
             "to configure them."
         ),
-        "who": "Engine (automated, sandboxed)",
+        "who": "Engine (sandboxed)",
         "inputs": [
             ("Project folder", "The extracted source code"),
             ("DESIGN_CONTRACT.json", "Used for contract compliance verification"),
         ],
         "outputs": [
-            ("Evidence records", "One structured JSON file per check — command run, exit code, full output, timestamps, and environment metadata"),
-            ("Contract compliance report", "Missing files, extra files, budget violations, and type integrity results"),
-            ("Sandbox metadata", "Python/Node version, installed packages, virtualenv cache status"),
+            ("Evidence records",
+             "One structured JSON file per check — command run, exit code, full output, timestamps, and environment metadata",
+             "state/runs/&lt;run-id&gt;/evidence/"),
+            ("TEST_RESULTS.md",
+             "Human-readable summary of all check results — pass/fail per check with key output excerpts",
+             "state/tests/TEST_RESULTS.md"),
+            ("Contract compliance",
+             "Missing files, extra files, budget violations, and type integrity results",
+             "Included in evidence records"),
         ],
         "why": (
             "Evidence records are the 'test receipts' — they provide objective, machine-readable "
@@ -199,15 +242,21 @@ PIPELINE_STAGES = [
             "The final go/no-go decision.  Analyzes all test evidence and either accepts "
             "the build, rejects it with root-cause analysis, or flags it for human review."
         ),
-        "who": "AI or rule-based (configurable)",
+        "who": "AI or rule-based",
         "inputs": [
             ("Evidence records", "All test results from the previous stage"),
             ("Structural classification", "Failures categorized by type: imports, types, lint, build, tests, contract compliance"),
         ],
         "outputs": [
-            ("Verification verdict", "ACCEPTED or REJECTED with confidence score and rationale"),
-            ("Root-cause analysis", "For rejections: specific diagnosis of what went wrong and which files are affected"),
-            ("Audit bundle", "A complete, exportable archive of the entire run — trace, evidence, decisions, config snapshot"),
+            ("VERIFICATION.md",
+             "The final verdict — ACCEPTED or REJECTED with rationale and per-category analysis",
+             "state/tests/VERIFICATION.md"),
+            ("Decision record",
+             "The go/no-go decision captured in the audit trail for this run",
+             "state/runs/&lt;run-id&gt;/decisions/verify.json"),
+            ("Audit bundle",
+             "A complete, exportable archive of the entire run — trace, evidence, decisions, config snapshot",
+             "Exportable via: python -m engine.report"),
         ],
         "why": (
             "Three verification modes let you balance thoroughness against cost: "
@@ -234,7 +283,7 @@ def render(project_dir):
         unsafe_allow_html=True,
     )
 
-    # ── Visual flow line ───────────────────────────────────────────────────
+    # ── Visual flow line (using st.columns for reliable rendering) ─────────
     _render_flow_overview()
 
     st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
@@ -245,52 +294,59 @@ def render(project_dir):
 
 
 def _render_flow_overview():
-    """Render the compact horizontal stage overview with connecting arrows."""
-    nodes_html = ""
+    """Render the compact horizontal stage overview using st.columns.
+
+    Uses Streamlit-native columns instead of a single HTML blob to avoid
+    raw-HTML rendering issues in some Streamlit versions.
+    """
+    num_stages = len(PIPELINE_STAGES)
+    # Create columns: one per stage plus thin spacer columns for arrows
+    col_spec = []
+    for i in range(num_stages):
+        col_spec.append(1)           # stage node
+        if i < num_stages - 1:
+            col_spec.append(0.3)     # arrow spacer
+
+    cols = st.columns(col_spec)
+
+    col_idx = 0
     for i, stage in enumerate(PIPELINE_STAGES):
         color = stage["color"]
-        nodes_html += f"""
-            <div style="display:flex; flex-direction:column; align-items:center; min-width:80px;">
-                <div style="
-                    width:48px; height:48px; border-radius:50%;
-                    background:{color}20; border:2px solid {color};
-                    display:flex; align-items:center; justify-content:center;
-                    font-size:22px;
-                ">{stage['icon']}</div>
-                <div style="
-                    font-size:12px; font-weight:600; color:{TEXT_PRIMARY};
-                    margin-top:6px; text-align:center;
-                ">{stage['label']}</div>
-                <div style="
-                    font-size:10px; color:{TEXT_MUTED}; margin-top:2px;
-                    text-align:center; max-width:90px;
-                ">{stage['who']}</div>
-            </div>
-        """
-        # Arrow between stages (not after last)
-        if i < len(PIPELINE_STAGES) - 1:
-            nodes_html += f"""
-                <div style="
-                    display:flex; align-items:center; padding:0 4px;
-                    color:{MUTED}; font-size:20px; margin-top:-16px;
-                ">→</div>
-            """
+        with cols[col_idx]:
+            st.markdown(
+                f"""<div style="text-align:center; padding:8px 0;">
+                    <div style="
+                        width:48px; height:48px; border-radius:50%;
+                        background:{color}20; border:2px solid {color};
+                        display:inline-flex; align-items:center; justify-content:center;
+                        font-size:22px;
+                    ">{stage['icon']}</div>
+                    <div style="
+                        font-size:12px; font-weight:600; color:{TEXT_PRIMARY};
+                        margin-top:6px;
+                    ">{stage['label']}</div>
+                    <div style="
+                        font-size:10px; color:{TEXT_MUTED}; margin-top:2px;
+                    ">{stage['who']}</div>
+                </div>""",
+                unsafe_allow_html=True,
+            )
+        col_idx += 1
 
-    st.markdown(
-        f"""<div style="
-            display:flex; align-items:flex-start; justify-content:center;
-            padding:20px 12px; overflow-x:auto;
-            background:{BG_SURFACE}; border:1px solid {BORDER};
-            border-radius:{RADIUS_LG};
-        ">{nodes_html}</div>""",
-        unsafe_allow_html=True,
-    )
+        # Arrow between stages
+        if i < num_stages - 1:
+            with cols[col_idx]:
+                st.markdown(
+                    f'<div style="text-align:center; padding-top:18px; '
+                    f'color:{MUTED}; font-size:20px;">→</div>',
+                    unsafe_allow_html=True,
+                )
+            col_idx += 1
 
 
 def _render_stage_card(stage: dict, index: int):
     """Render an expandable detail card for a pipeline stage."""
     color = stage["color"]
-    key = stage["key"]
 
     with st.expander(
         f"{stage['icon']}  Stage {index}: {stage['label']}  —  {stage['summary'][:80]}...",
@@ -312,7 +368,8 @@ def _render_stage_card(stage: dict, index: int):
                 f'margin-bottom:8px;">📥 INPUTS</div>',
                 unsafe_allow_html=True,
             )
-            for name, desc in stage["inputs"]:
+            for item in stage["inputs"]:
+                name, desc = item[0], item[1]
                 st.markdown(
                     f"""<div style="
                         padding:8px 12px; margin-bottom:6px;
@@ -331,7 +388,13 @@ def _render_stage_card(stage: dict, index: int):
                 f'margin-bottom:8px;">📤 OUTPUTS</div>',
                 unsafe_allow_html=True,
             )
-            for name, desc in stage["outputs"]:
+            for item in stage["outputs"]:
+                name, desc, path = item[0], item[1], item[2]
+                # Show file path as a subtle monospace label below the description
+                path_html = (
+                    f'<div style="font-size:11px; color:{MUTED}; margin-top:4px; '
+                    f'font-family:monospace; opacity:0.85;">📂 {path}</div>'
+                )
                 st.markdown(
                     f"""<div style="
                         padding:8px 12px; margin-bottom:6px;
@@ -340,6 +403,7 @@ def _render_stage_card(stage: dict, index: int):
                     ">
                         <div style="font-size:13px; font-weight:600; color:{TEXT_PRIMARY};">{name}</div>
                         <div style="font-size:12px; color:{TEXT_MUTED}; margin-top:2px;">{desc}</div>
+                        {path_html}
                     </div>""",
                     unsafe_allow_html=True,
                 )

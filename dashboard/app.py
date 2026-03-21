@@ -20,6 +20,7 @@ from dashboard.pages import (
     config_editor,
     create_project,
     home,
+    pipeline_explorer,
     run_inspector,
     run_pipeline,
 )
@@ -68,13 +69,14 @@ if project_dir is None:
 #   ── Security ──
 #     Inspector  |  Audit Trail  |  Configuration  |  Benchmarks
 
-PRIMARY_PAGES = ["Dashboard", "Create Project", "Run Pipeline"]
+PRIMARY_PAGES = ["Dashboard", "Pipeline Explorer", "Create Project", "Run Pipeline"]
 SECURITY_PAGES = ["Inspector", "Audit Trail", "Configuration", "Benchmarks"]
 ALL_PAGES = PRIMARY_PAGES + SECURITY_PAGES
 
 # Icons for each page
 PAGE_ICONS = {
     "Dashboard": "📊",
+    "Pipeline Explorer": "🗺️",
     "Create Project": "➕",
     "Run Pipeline": "🚀",
     "Inspector": "🔍",
@@ -172,6 +174,8 @@ current_page = st.session_state["page"]
 
 if current_page == "Dashboard":
     home.render(project_dir)
+elif current_page == "Pipeline Explorer":
+    pipeline_explorer.render(project_dir)
 elif current_page == "Create Project":
     create_project.render(project_dir)
 elif current_page == "Run Pipeline":

@@ -282,7 +282,7 @@ def run_check(
     try:
         result = subprocess.run(
             command,
-            shell=True,
+            shell=True,  # nosec B602 — commands come from config.yml, never from AI output
             capture_output=True,
             text=True,
             timeout=timeout,

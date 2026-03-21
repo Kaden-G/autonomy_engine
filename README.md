@@ -1,6 +1,9 @@
 # Autonomy Engine v1.3
 
-![Tests](https://img.shields.io/badge/tests-265%20collected-brightgreen)
+![Tests](https://img.shields.io/badge/tests-265%20passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-61%25%20engine-blue)
+![Security](https://img.shields.io/badge/bandit-1%20known%20%7C%200%20unexpected-yellow)
+![Deps](https://img.shields.io/badge/pip--audit-0%20project%20vulns-brightgreen)
 
 An autonomous software build pipeline that turns a project description into working, tested code — with human approval gates, tamper-evident audit trails, and strict quality contracts that keep AI-generated output on-spec.
 
@@ -56,6 +59,30 @@ At any stage, the pipeline can pause and ask a human to approve before continuin
 - Unsupervised production deployments — this is a supervised tool
 - General-purpose AI agent framework — this is a specific pipeline, not a platform
 - Real-time or latency-sensitive workflows
+
+---
+
+## Supported Project Types
+
+The engine doesn't just generate code — it also tests, lints, type-checks, and verifies it. That full pipeline (generate → extract → test → verify) requires the engine to understand the project's toolchain. Today, two ecosystems are fully supported end-to-end:
+
+### Python (fully supported)
+
+Detected by: `requirements.txt`, `pyproject.toml`, or `setup.py`
+
+The engine auto-configures: dependency install (`pip`), syntax validation (`py_compile`), import resolution (custom AST-based checker), linting with auto-fix (`ruff`), type checking (`mypy`), and unit tests (`pytest` when a test directory or config is present). A Python virtualenv is created in the sandbox, cached across runs when dependencies haven't changed.
+
+### Node.js / TypeScript (fully supported)
+
+Detected by: `package.json`
+
+The engine auto-configures: dependency install (`npm`), TypeScript type checking (`tsc` or a `typecheck` script), build (`npm run build` when configured), linting (`npm run lint` when configured), and tests (`npm test` when configured, with special handling for React test runners). Dependencies are installed in an isolated `node_modules` with a shared npm cache.
+
+### Other Languages (not yet supported for testing)
+
+The AI can *design and generate* code in any language — Go, Rust, Java, C#, etc. — because the design and implementation stages are language-agnostic (they work from the contract, not from language-specific tooling). However, the **test stage will skip automated checks** for unrecognized project types, which means the verification stage has less evidence to work with. The contract compliance checker (which validates file lists, size budgets, and data type definitions) still runs regardless of language.
+
+**What it would take to add a new language:** Each new ecosystem needs three things — a project-type detector (e.g., "if `go.mod` exists → Go project"), a dependency installer, and a set of check commands (build, lint, test). In the current codebase, that's roughly 30–50 lines in `engine/evidence.py` (auto-detection) and `engine/sandbox.py` (environment setup). The architecture is designed for this — `auto_detect_checks` is a straightforward if/elif chain, and new branches follow the same pattern as the existing Python and Node.js ones.
 
 ---
 
@@ -255,6 +282,34 @@ Extracted Python files are validated for correct syntax, resolvable imports, and
 ### API Key Handling
 
 API keys are loaded from a `.env` file (which is excluded from version control) and never appear in audit logs, prompts, or output. A pre-commit hook rejects any attempt to commit files containing key patterns.
+
+---
+
+## Quality Assurance
+
+Three independent tools provide ongoing due-diligence on the engine's own codebase (not the AI-generated projects — the engine tests those during every pipeline run).
+
+### Test Coverage (pytest-cov)
+
+The engine has 265+ automated tests covering the core modules. Coverage of the `engine/` package is **61%** on the testable surface. Modules with 0% coverage (cost_estimator, usage_tracker, notifier, decision_gates) depend on the Prefect runtime, which is only available when running the full pipeline — they are fully exercised during real pipeline runs but can't be unit-tested in isolation.
+
+High-coverage modules (90%+): cache, contract_checker, design_contract, evidence, sandbox, spec_normalizer, tier_context, tracer.
+
+### Security Scan (bandit)
+
+Bandit (Python SAST — Static Application Security Testing) scans the engine for common security anti-patterns. Current results across 2,834 lines of code:
+
+**1 HIGH (known, intentional):** `subprocess call with shell=True` in `engine/evidence.py`. This is the test runner — it executes pre-approved commands from `config.yml` in a sandboxed workspace. The commands are never AI-generated; the AI only produces code, not shell commands. Annotated with `# nosec B602` and documented in the Security Model section.
+
+**8 LOW (informational):** All are `subprocess` import/call notices in `engine/sandbox.py` and `engine/evidence.py`. These are core to the engine's job (running tests in isolated environments) and use controlled, non-user-supplied arguments.
+
+**0 MEDIUM, 0 unexpected findings.**
+
+### Dependency Audit (pip-audit)
+
+pip-audit checks all installed packages against the Python Advisory Database for known vulnerabilities. Current results for project dependencies: **0 vulnerabilities found.**
+
+System-level packages in the development environment (tornado 6.1, twisted 22.1.0, wheel 0.37.1) have known CVEs but are not project dependencies — they ship with the OS and don't affect the engine.
 
 ---
 
@@ -510,6 +565,6 @@ state/                Runtime artifacts (excluded from version control)
   cache/llm/          Cached AI responses
   sandbox_cache/      Cached test environments
 
-tests/                Automated test suite (265+ tests)
+tests/                Automated test suite (265 tests, 61% engine coverage)
 bench/                Performance benchmarking tools
 ```

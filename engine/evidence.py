@@ -127,15 +127,16 @@ def auto_detect_checks(project_dir: Path) -> list[dict]:
     is_python = pyproject_path.exists() or requirements_path.exists() or setup_path.exists()
 
     if is_python:
-        # Install dependencies
+        # Install dependencies — use "python -m pip" instead of bare "pip" to
+        # avoid stale shebang paths when using a cached virtualenv.
         if requirements_path.exists():
             checks.append(
-                {"name": "install", "command": "pip install -r requirements.txt"}
+                {"name": "install", "command": "python -m pip install -r requirements.txt"}
             )
         elif pyproject_path.exists():
-            checks.append({"name": "install", "command": "pip install -e ."})
+            checks.append({"name": "install", "command": "python -m pip install -e ."})
         elif setup_path.exists():
-            checks.append({"name": "install", "command": "pip install -e ."})
+            checks.append({"name": "install", "command": "python -m pip install -e ."})
 
         # ALWAYS run syntax check — catches truncated files and basic errors
         checks.append({
@@ -165,9 +166,10 @@ def auto_detect_checks(project_dir: Path) -> list[dict]:
             checks.append({"name": "test", "command": "python -m pytest"})
 
         # ruff — always attempt, it's fast and catches real issues.
-        # Use --fix to auto-fix trivial issues (unused imports, etc.) so
-        # only genuinely unfixable problems remain as errors.
-        checks.append({"name": "lint", "command": "python -m ruff check . --select E,F --ignore E501 --fix"})
+        # Use --fix --unsafe-fixes to auto-fix both trivial issues (unused imports)
+        # and common AI patterns (unused variables, `== False` comparisons) so only
+        # genuinely unfixable problems remain as errors.
+        checks.append({"name": "lint", "command": "python -m ruff check . --select E,F --ignore E501 --fix --unsafe-fixes"})
 
         # mypy — always attempt for type safety.
         # --explicit-package-bases avoids "found twice under different module names"
@@ -199,44 +201,57 @@ def _has_ts_dependency(pkg: dict) -> bool:
 def _build_python_import_check_command(project_dir: Path) -> str:
     """Build a shell command that validates all Python imports resolve.
 
-    Uses ``python -c`` to attempt importing each module found in the project.
+    Writes a small checker script to a temp file and runs it with ``python``.
     This catches cross-file import errors that syntax checking alone misses.
+
+    We use a temp script file instead of ``python -c`` because the checker
+    needs a ``def`` statement, which is a compound statement that can't be
+    expressed in a semicolon-separated one-liner.
     """
     py_files = list(project_dir.rglob("*.py"))
     if not py_files:
         return "echo 'No Python files found'"
 
-    # Build a script that checks every import statement in the project resolves to a real module.
-    # Uses Python's code parser to find imports, then tries to locate each one.
-    # Excludes virtual environments and build artifacts — only checks project source code.
+    # Write the checker as a proper Python script (heredoc piped to python).
+    # This avoids the `python -c` syntax limitations with compound statements.
+    # The script checks every import statement in the project resolves to a real module.
     # Resolution: local file → local directory → Python standard library → installed package.
     return (
-        "python -c \""
-        "import ast, sys, pathlib, importlib.util; "
-        "errors = []; "
-        "_SKIP = {'.venv', 'venv', 'node_modules', '__pycache__', '.git', '.tox', '.nox'}; "
-        "files = [f for f in pathlib.Path('.').rglob('*.py') "
-        "  if not any(part in _SKIP for part in f.parts)]; "
-        "_stdlib = sys.stdlib_module_names if hasattr(sys, 'stdlib_module_names') else set(); "
-        "def _resolves(mod): "
-        "  top = mod.split('.')[0]; "
-        "  return ("
-        "    pathlib.Path(mod.replace('.', '/') + '.py').exists() "
-        "    or pathlib.Path(mod.replace('.', '/')).is_dir() "
-        "    or top in _stdlib "
-        "    or importlib.util.find_spec(top) is not None"
-        "  ); "
-        "[("
-        "  tree := ast.parse(f.read_text()), "
-        "  [errors.append(f'{f}:{node.lineno}: cannot resolve {node.module}') "
-        "   for node in ast.walk(tree) "
-        "   if isinstance(node, ast.ImportFrom) and node.module "
-        "   and not _resolves(node.module)]"
-        ") for f in files if f.name != '__init__.py']; "
-        "print(f'{len(files)} files checked, {len(errors)} import issue(s)'); "
-        "[print(e) for e in errors]; "
-        "sys.exit(1 if errors else 0)"
-        "\""
+        "python << 'IMPORT_CHECK_EOF'\n"
+        "import ast, sys, pathlib, importlib.util\n"
+        "\n"
+        "errors = []\n"
+        "_SKIP = {'.venv', 'venv', 'node_modules', '__pycache__', '.git', '.tox', '.nox'}\n"
+        "files = [f for f in pathlib.Path('.').rglob('*.py')\n"
+        "         if not any(part in _SKIP for part in f.parts)]\n"
+        "_stdlib = sys.stdlib_module_names if hasattr(sys, 'stdlib_module_names') else set()\n"
+        "\n"
+        "def _resolves(mod):\n"
+        "    top = mod.split('.')[0]\n"
+        "    return (\n"
+        "        pathlib.Path(mod.replace('.', '/') + '.py').exists()\n"
+        "        or pathlib.Path(mod.replace('.', '/')).is_dir()\n"
+        "        or top in _stdlib\n"
+        "        or importlib.util.find_spec(top) is not None\n"
+        "    )\n"
+        "\n"
+        "for f in files:\n"
+        "    if f.name == '__init__.py':\n"
+        "        continue\n"
+        "    try:\n"
+        "        tree = ast.parse(f.read_text())\n"
+        "    except SyntaxError:\n"
+        "        continue  # syntax-check stage will catch this\n"
+        "    for node in ast.walk(tree):\n"
+        "        if isinstance(node, ast.ImportFrom) and node.module:\n"
+        "            if not _resolves(node.module):\n"
+        "                errors.append(f'{f}:{node.lineno}: cannot resolve {node.module}')\n"
+        "\n"
+        "print(f'{len(files)} files checked, {len(errors)} import issue(s)')\n"
+        "for e in errors:\n"
+        "    print(e)\n"
+        "sys.exit(1 if errors else 0)\n"
+        "IMPORT_CHECK_EOF"
     )
 
 

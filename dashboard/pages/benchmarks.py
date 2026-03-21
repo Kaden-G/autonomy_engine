@@ -9,11 +9,19 @@ from dashboard.theme import STAGE_COLORS
 
 
 def _render_usage_report(project_dir):
-    """Render the Token Usage section — actual vs projected costs."""
+    """Render the Token Usage section — actual vs projected costs.
+
+    Uses compact custom HTML instead of Streamlit's default (oversized) metric
+    widgets so everything fits cleanly in the dashboard layout.
+    """
     from pathlib import Path
     import json
+    from dashboard.theme import BG_SURFACE, BORDER, TEXT_BODY, TEXT_MUTED, RADIUS
 
-    st.subheader("Token Usage — Actual vs Projected")
+    st.markdown(
+        '<h3 style="font-size:18px; margin-bottom:4px;">Token Usage — Actual vs Projected</h3>',
+        unsafe_allow_html=True,
+    )
 
     # Find the latest run with a usage report
     state_dir = Path(project_dir) / "state" / "runs"
@@ -41,7 +49,7 @@ def _render_usage_report(project_dir):
         )
         return
 
-    # Run selector
+    # Run selector (compact)
     run_labels = [
         f"{r['run_id']} ({r.get('tier', 'unknown')})" for r in reports
     ]
@@ -49,27 +57,50 @@ def _render_usage_report(project_dir):
         "Select Run", range(len(run_labels)),
         format_func=lambda i: run_labels[i],
         key="usage_run",
+        label_visibility="collapsed",
     )
     report = reports[selected]
     actual = report.get("actual", {})
     projected = report.get("projected", {})
 
-    # Key metrics row
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Tier", report.get("tier", "—").upper())
-    c2.metric("LLM Calls", actual.get("llm_calls", 0))
-    c3.metric("Actual Cost", f"${actual.get('cost_usd', 0):.4f}")
-
+    # Key metrics row — compact custom HTML instead of st.metric
+    tier_label = report.get("tier", "—").upper()
+    llm_calls = actual.get("llm_calls", 0)
+    cost_str = f"${actual.get('cost_usd', 0):.4f}"
     if projected.get("total_tokens", 0) > 0:
         savings = (1 - actual.get("total_tokens", 0) / projected["total_tokens"]) * 100
-        c4.metric("vs Projection", f"{savings:+.0f}% tokens saved")
+        proj_str = f"{savings:+.0f}% tokens saved"
     else:
-        c4.metric("Projected Cost", "N/A")
+        proj_str = "N/A"
+
+    def _mini_metric(label: str, value: str) -> str:
+        return (
+            f'<div style="text-align:center; padding:8px 4px;">'
+            f'<div style="font-size:11px; color:{TEXT_MUTED}; text-transform:uppercase; '
+            f'letter-spacing:0.5px; margin-bottom:2px;">{label}</div>'
+            f'<div style="font-size:16px; font-weight:600; color:{TEXT_BODY};">{value}</div>'
+            f'</div>'
+        )
+
+    st.markdown(
+        f'<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; '
+        f'background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:{RADIUS}; '
+        f'padding:4px 8px; margin-bottom:12px;">'
+        + _mini_metric("Tier", tier_label)
+        + _mini_metric("LLM Calls", str(llm_calls))
+        + _mini_metric("Actual Cost", cost_str)
+        + _mini_metric("vs Projection", proj_str)
+        + '</div>',
+        unsafe_allow_html=True,
+    )
 
     # Per-stage breakdown
     stages = report.get("stages", [])
     if stages:
-        st.markdown("**Per-Stage Breakdown**")
+        st.markdown(
+            '<p style="font-size:13px; font-weight:600; margin:8px 0 4px;">Per-Stage Breakdown</p>',
+            unsafe_allow_html=True,
+        )
 
         stage_names = [s["stage"] for s in stages]
         input_tokens = [s["input_tokens"] for s in stages]
@@ -83,6 +114,7 @@ def _render_usage_report(project_dir):
                 marker_color="#60A5FA",
                 text=[f"{t:,}" for t in input_tokens],
                 textposition="outside",
+                textfont_size=10,
             ),
             go.Bar(
                 name="Output Tokens",
@@ -91,33 +123,43 @@ def _render_usage_report(project_dir):
                 marker_color="#34D399",
                 text=[f"{t:,}" for t in output_tokens],
                 textposition="outside",
+                textfont_size=10,
             ),
         ])
         fig.update_layout(
             barmode="group",
             yaxis_title="Tokens",
-            height=350,
-            margin=dict(t=20, b=40),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02),
+            height=300,
+            margin=dict(t=10, b=30, l=50, r=10),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, font_size=11),
+            font=dict(size=11),
         )
         st.plotly_chart(fig, use_container_width=True)
 
-    # Actual vs Projected comparison table
+    # Actual vs Projected comparison — compact two-column layout
     if projected.get("total_tokens", 0) > 0:
-        st.markdown("**Actual vs Projected**")
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.markdown("**Actual**")
-            st.write(f"Input: {actual.get('input_tokens', 0):,}")
-            st.write(f"Output: {actual.get('output_tokens', 0):,}")
-            st.write(f"Total: {actual.get('total_tokens', 0):,}")
-            st.write(f"Cost: ${actual.get('cost_usd', 0):.4f}")
-        with col_b:
-            st.markdown("**Projected**")
-            st.write(f"Input: {projected.get('input_tokens', 0):,}")
-            st.write(f"Output: {projected.get('output_tokens', 0):,}")
-            st.write(f"Total: {projected.get('total_tokens', 0):,}")
-            st.write(f"Cost: ${projected.get('cost_usd', 0):.4f}")
+        def _usage_col(title: str, data: dict) -> str:
+            return (
+                f'<div style="padding:8px 12px;">'
+                f'<div style="font-size:12px; font-weight:600; color:{TEXT_BODY}; '
+                f'margin-bottom:6px;">{title}</div>'
+                f'<div style="font-size:12px; color:{TEXT_MUTED}; line-height:1.8;">'
+                f'Input: {data.get("input_tokens", 0):,}<br>'
+                f'Output: {data.get("output_tokens", 0):,}<br>'
+                f'Total: {data.get("total_tokens", 0):,}<br>'
+                f'Cost: ${data.get("cost_usd", 0):.4f}'
+                f'</div></div>'
+            )
+
+        st.markdown(
+            f'<div style="display:grid; grid-template-columns:1fr 1fr; gap:0; '
+            f'background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:{RADIUS}; '
+            f'margin-bottom:12px;">'
+            + _usage_col("Actual", actual)
+            + _usage_col("Projected", projected)
+            + '</div>',
+            unsafe_allow_html=True,
+        )
 
     # Cache info per stage
     cached_stages = [s for s in stages if s.get("cache_hit")]

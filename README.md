@@ -236,10 +236,12 @@ AUTONOMY_ENGINE_PROJECT_DIR=/path/to/project streamlit run dashboard/app.py
 
 *Main:*
 - **Dashboard** — pipeline status with real pass/fail indicators, recent runs, cache statistics
+- **Pipeline Explorer** — interactive visual map of the pipeline stages, inputs, outputs, and why each step matters (educational, no run data required)
 - **Create Project** — form-based intake with project management (load previous specs, view run history)
 - **Run Pipeline** — tier selection with cost estimates, live progress with trace timeline
 
 *Security & Ops:*
+- **Run Outputs** — every artifact from a pipeline run, organized by stage with clickable file viewers (select a run, click any output to read it inline)
 - **Inspector** — detailed trace timeline, evidence records, decisions, artifacts, and config snapshot per run
 - **Audit Trail** — visual hash chain with integrity verification and export to file
 - **Configuration** — active AI model settings, gate policies, sandbox config, approved check commands

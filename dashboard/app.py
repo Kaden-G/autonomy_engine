@@ -22,6 +22,7 @@ from dashboard.pages import (
     home,
     pipeline_explorer,
     run_inspector,
+    run_outputs,
     run_pipeline,
 )
 from dashboard.theme import (
@@ -70,7 +71,7 @@ if project_dir is None:
 #     Inspector  |  Audit Trail  |  Configuration  |  Benchmarks
 
 PRIMARY_PAGES = ["Dashboard", "Pipeline Explorer", "Create Project", "Run Pipeline"]
-SECURITY_PAGES = ["Inspector", "Audit Trail", "Configuration", "Benchmarks"]
+SECURITY_PAGES = ["Run Outputs", "Inspector", "Audit Trail", "Configuration", "Benchmarks"]
 ALL_PAGES = PRIMARY_PAGES + SECURITY_PAGES
 
 # Icons for each page
@@ -79,6 +80,7 @@ PAGE_ICONS = {
     "Pipeline Explorer": "🗺️",
     "Create Project": "➕",
     "Run Pipeline": "🚀",
+    "Run Outputs": "📂",
     "Inspector": "🔍",
     "Audit Trail": "🔒",
     "Configuration": "⚙️",
@@ -180,6 +182,8 @@ elif current_page == "Create Project":
     create_project.render(project_dir)
 elif current_page == "Run Pipeline":
     run_pipeline.render(project_dir)
+elif current_page == "Run Outputs":
+    run_outputs.render(project_dir)
 elif current_page == "Inspector":
     run_inspector.render(project_dir)
 elif current_page == "Audit Trail":

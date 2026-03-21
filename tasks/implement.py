@@ -1,10 +1,15 @@
-"""Implement task — LLM generates code from the approved design.
+"""Implement task — the AI writes the actual code, guided by the design contract.
 
-Supports two modes:
-    1. **Single-call** (default) — one LLM call produces the entire implementation.
-    2. **Chunked** — when the estimated output exceeds the token budget, the
-       architecture is split into components and each is implemented in a
-       separate call.  Manifests are merged at the end.
+This is the main code generation stage.  The AI receives the design contract
+(the binding blueprint) and produces source code files that implement it.
+
+Two modes:
+    1. **Single-call** — one AI call produces the entire implementation.  Used when
+       the project is small enough to fit in one response.
+    2. **Chunked** — for larger projects, the system splits the architecture into
+       components and asks the AI to implement each one separately.  Each chunk
+       receives the same shared type definitions, so the AI can't invent conflicting
+       versions of the same data structure.  Results are merged at the end.
 """
 
 import json
@@ -838,6 +843,7 @@ def implement_system() -> None:
         "cache_hit": cache_hit,
         "cache_key": cache_key,
         "contract_driven": contract is not None,
+        "usage": provider.total_usage,
     }
     if merge_conflicts:
         extra["merge_conflicts"] = merge_conflicts

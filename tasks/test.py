@@ -1,9 +1,13 @@
-"""Test task — run approved checks in a sandboxed workspace and capture evidence.
+"""Test task — run automated quality checks and capture the results as evidence.
 
-The LLM is not involved here.  Every check comes from ``config.yml``,
-runs inside an isolated temporary workspace (with its own virtualenv),
-and results are stored as structured evidence records under the
-current run directory.
+No AI is involved in testing.  This stage runs real tools (syntax checkers, linters,
+type checkers, test suites) against the generated code in an isolated workspace.
+Every result is captured as a structured evidence record (pass/fail, full output,
+timestamps) that feeds into the verification stage and the audit trail.
+
+The checks are either explicitly configured in ``config.yml`` or auto-detected
+based on the project type (Python, Node.js, etc.).  Contract compliance is always
+checked — verifying that the generated code matches the design blueprint.
 """
 
 import re

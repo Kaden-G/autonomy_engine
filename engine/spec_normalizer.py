@@ -1,20 +1,16 @@
-"""Spec normalizer — parse the project spec YAML into structured, unambiguous fields.
+"""Spec normalizer — clean up ambiguity before the AI starts designing.
 
-The raw ``project_spec.yml`` often contains ambiguous language like
-"React (or Next.js)" or "SQLite or IndexedDB depending on deployment."
-The design LLM shouldn't have to guess which one — these should be locked
-decisions before the architecture stage begins.
+When a user describes their project, they often write things like "React or Vue"
+or "SQLite or IndexedDB depending on deployment."  The AI shouldn't have to guess
+which one — those should be resolved decisions before architecture begins.
 
-This module:
-    1. Parses the spec YAML.
-    2. Extracts structured fields (features, tech stack, priorities).
-    3. Detects ambiguous tech choices (e.g. "X or Y") and flags them.
-    4. Produces a ``NormalizedSpec`` that downstream stages can use without
-       interpretation.
+This module takes the raw project spec and:
+    1. Parses it into structured fields (features, tech stack, priorities)
+    2. Detects ambiguous "X or Y" technology choices and flags them
+    3. Produces a clean, unambiguous spec that downstream stages can rely on
 
-If the spec contains ambiguous choices, the pipeline can either:
-    - Ask the user to resolve them (via decision gate).
-    - Let the design LLM choose and lock the decision in the contract.
+If ambiguity is found, the pipeline can either ask the user to choose (via a
+decision gate) or let the AI pick and lock the choice into the design contract.
 """
 
 from __future__ import annotations

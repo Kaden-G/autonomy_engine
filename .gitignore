@@ -33,6 +33,9 @@ build/
 .venv/
 venv/
 
+# HMAC trace keys — per-run secrets, must not be committed
+.trace_key
+
 # IDE
 .idea/
 .vscode/

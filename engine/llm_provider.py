@@ -1,4 +1,13 @@
-"""LLM provider abstraction — Claude and OpenAI, switchable via config."""
+"""AI model interface — supports Claude and OpenAI behind a single, switchable API.
+
+This module lets the rest of the engine call an AI model without knowing (or caring)
+whether it's talking to Claude or OpenAI.  The active provider is chosen from
+``config.yml``, and each pipeline stage can optionally use a different model
+(e.g., a cheaper model for verification, a more capable one for implementation).
+
+Also tracks token usage (the "meter" for AI API costs) across all calls, so the
+engine can report actual costs at the end of a run.
+"""
 
 from __future__ import annotations
 
@@ -113,6 +122,32 @@ class LLMProvider(ABC):
     model: str
     max_tokens: int
     was_truncated: bool = False  # True when last generate() hit max_tokens
+    last_usage: dict | None = None  # Token usage from the most recent generate()
+
+    # Cumulative usage across all generate() calls on this provider instance.
+    # Useful for multi-call stages like chunked implementation.
+    _total_input_tokens: int = 0
+    _total_output_tokens: int = 0
+    _call_count: int = 0
+
+    @property
+    def total_usage(self) -> dict:
+        """Cumulative token usage across all generate() calls."""
+        return {
+            "input_tokens": self._total_input_tokens,
+            "output_tokens": self._total_output_tokens,
+            "llm_calls": self._call_count,
+        }
+
+    def _record_usage(self, input_tokens: int, output_tokens: int) -> None:
+        """Update cumulative counters after an API call."""
+        self.last_usage = {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
+        self._total_input_tokens += input_tokens
+        self._total_output_tokens += output_tokens
+        self._call_count += 1
 
     @abstractmethod
     def generate(self, prompt: str, system: str | None = None) -> str:
@@ -120,6 +155,12 @@ class LLMProvider(ABC):
 
         After calling, check ``self.was_truncated`` to detect whether
         the response was cut short by the max_tokens limit.
+
+        ``self.last_usage`` contains actual token counts from the API::
+
+            {"input_tokens": int, "output_tokens": int}
+
+        ``self.total_usage`` contains cumulative counts across all calls.
         """
 
 
@@ -147,6 +188,14 @@ class ClaudeProvider(LLMProvider):
             for text in stream.text_stream:
                 text_parts.append(text)
             final_message = stream.get_final_message()
+
+        # Capture actual token usage from API response
+        usage = final_message.usage
+        self._record_usage(usage.input_tokens, usage.output_tokens)
+        logger.info(
+            "Token usage: %d input, %d output (budget: %d)",
+            usage.input_tokens, usage.output_tokens, self.max_tokens,
+        )
 
         self.was_truncated = (final_message.stop_reason == "max_tokens")
         if self.was_truncated:
@@ -179,6 +228,20 @@ class OpenAIProvider(LLMProvider):
             messages=messages,
         )
         choice = response.choices[0]
+
+        # Capture actual token usage from API response
+        if response.usage:
+            self._record_usage(
+                response.usage.prompt_tokens,
+                response.usage.completion_tokens,
+            )
+            logger.info(
+                "Token usage: %d input, %d output (budget: %d)",
+                response.usage.prompt_tokens,
+                response.usage.completion_tokens,
+                self.max_tokens,
+            )
+
         self.was_truncated = (choice.finish_reason == "length")
         if self.was_truncated:
             logger.warning(

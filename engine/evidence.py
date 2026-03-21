@@ -1,11 +1,17 @@
-"""Evidence runner — execute approved commands and capture structured evidence.
+"""Evidence runner — run quality checks and capture the receipts.
 
-Only pre-configured commands from ``config.yml`` are executed.
-The LLM never controls which shell commands run.
+This module executes automated checks (syntax, imports, lint, type safety, tests)
+against the AI-generated project and records structured evidence of every result.
+Each check produces a JSON "evidence record" with the command that ran, whether
+it passed or failed, full output, and timestamps.
 
-When ``checks`` is empty, :func:`auto_detect_checks` can inspect the
-extracted project directory for ``package.json`` or ``pyproject.toml``
-and return a reasonable set of smoke-test commands.
+Important safety property:
+    Only pre-approved commands from the config file are executed.  The AI never
+    controls which shell commands run — it only generates code, not test commands.
+
+When no checks are explicitly configured, the engine auto-detects appropriate
+checks by inspecting the project (e.g., finding ``package.json`` for Node.js
+projects or ``requirements.txt`` for Python projects).
 """
 
 import hashlib
@@ -158,11 +164,18 @@ def auto_detect_checks(project_dir: Path) -> list[dict]:
         elif (project_dir / "tests").is_dir():
             checks.append({"name": "test", "command": "python -m pytest"})
 
-        # ruff — always attempt, it's fast and catches real issues
-        checks.append({"name": "lint", "command": "python -m ruff check . --select E,F --ignore E501"})
+        # ruff — always attempt, it's fast and catches real issues.
+        # Use --fix to auto-fix trivial issues (unused imports, etc.) so
+        # only genuinely unfixable problems remain as errors.
+        checks.append({"name": "lint", "command": "python -m ruff check . --select E,F --ignore E501 --fix"})
 
-        # mypy — always attempt for type safety
-        checks.append({"name": "typecheck", "command": "python -m mypy . --ignore-missing-imports --no-error-summary"})
+        # mypy — always attempt for type safety.
+        # --explicit-package-bases avoids "found twice under different module names"
+        # when projects use a src/ layout.
+        checks.append({
+            "name": "typecheck",
+            "command": "python -m mypy . --ignore-missing-imports --no-error-summary --explicit-package-bases",
+        })
 
         logger.info(
             "Auto-detected %d check(s) from Python project: %s",
@@ -193,27 +206,32 @@ def _build_python_import_check_command(project_dir: Path) -> str:
     if not py_files:
         return "echo 'No Python files found'"
 
-    # Build a script that tries to import each module
-    # Using ast to extract imports, then attempting them
-    # Exclude .venv, venv, node_modules, __pycache__, .git — only check project source
+    # Build a script that checks every import statement in the project resolves to a real module.
+    # Uses Python's code parser to find imports, then tries to locate each one.
+    # Excludes virtual environments and build artifacts — only checks project source code.
+    # Resolution: local file → local directory → Python standard library → installed package.
     return (
         "python -c \""
-        "import ast, sys, pathlib; "
+        "import ast, sys, pathlib, importlib.util; "
         "errors = []; "
         "_SKIP = {'.venv', 'venv', 'node_modules', '__pycache__', '.git', '.tox', '.nox'}; "
         "files = [f for f in pathlib.Path('.').rglob('*.py') "
         "  if not any(part in _SKIP for part in f.parts)]; "
+        "_stdlib = sys.stdlib_module_names if hasattr(sys, 'stdlib_module_names') else set(); "
+        "def _resolves(mod): "
+        "  top = mod.split('.')[0]; "
+        "  return ("
+        "    pathlib.Path(mod.replace('.', '/') + '.py').exists() "
+        "    or pathlib.Path(mod.replace('.', '/')).is_dir() "
+        "    or top in _stdlib "
+        "    or importlib.util.find_spec(top) is not None"
+        "  ); "
         "[("
         "  tree := ast.parse(f.read_text()), "
         "  [errors.append(f'{f}:{node.lineno}: cannot resolve {node.module}') "
         "   for node in ast.walk(tree) "
         "   if isinstance(node, ast.ImportFrom) and node.module "
-        "   and not any(("
-        "     pathlib.Path(node.module.replace('.', '/') + '.py').exists(), "
-        "     pathlib.Path(node.module.replace('.', '/')).is_dir(), "
-        "     node.module.split('.')[0] in sys.stdlib_module_names "
-        "     if hasattr(sys, 'stdlib_module_names') else False, "
-        "   ))]"
+        "   and not _resolves(node.module)]"
         ") for f in files if f.name != '__init__.py']; "
         "print(f'{len(files)} files checked, {len(errors)} import issue(s)'); "
         "[print(e) for e in errors]; "

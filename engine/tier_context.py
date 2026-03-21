@@ -1,14 +1,15 @@
-"""Tier context — store and retrieve the user-selected build tier.
+"""Tier context — remembers whether this run is Premium or MVP.
 
-This module acts as a singleton store for the active tier, making it
-accessible to any task that needs to adjust its behavior based on the
-selected tier (e.g. the design prompt, implement chunking strategy).
+The user selects a build tier (Premium = full output, MVP = lean and cheap)
+before launching the pipeline.  This module stores that choice and provides
+scope guidance that gets injected into AI prompts — for example, telling the
+AI to limit itself to 5 components and skip Docker configs in MVP mode.
 
 Usage::
 
     from engine.tier_context import set_tier, get_tier, get_tier_guidance
     set_tier("mvp")                  # called once by the pipeline runner
-    guidance = get_tier_guidance()   # returns LLM-facing scope instructions
+    guidance = get_tier_guidance()   # returns scope instructions for AI prompts
 """
 
 from __future__ import annotations

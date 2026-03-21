@@ -1,9 +1,13 @@
-"""Sandbox — isolated temporary workspace for running verification commands.
+"""Sandbox — run AI-generated code in an isolated workspace, not your real files.
 
-Copies the generated project into a temp directory, sets up the
-appropriate runtime (Python virtualenv or Node.js node_modules),
-optionally installs dependencies, and cleans up after.
-Host files are never modified by sandboxed execution.
+When the engine tests AI-generated code, it doesn't run it in-place.  Instead,
+this module copies the project into a temporary directory with its own isolated
+environment (Python virtualenv or Node.js node_modules), optionally installs
+dependencies, runs the tests there, and cleans up afterward.
+
+This means the AI's code can't accidentally overwrite engine files or pollute
+your system's installed packages.  See the Security Model in README.md for
+what this does and doesn't protect against.
 """
 
 import hashlib

@@ -1,8 +1,12 @@
-"""Upfront cost estimation and tier selection for pipeline runs.
+"""Cost estimator — "how much will this run cost?" before you commit.
 
-Estimates token usage per LLM stage using input-size heuristics,
-then presents the user with Premium vs MVP tier options including
-projected costs and trade-offs.
+Before launching a pipeline run, this module scans the project inputs and
+estimates how many AI tokens each stage will consume.  It then presents two
+options (Premium vs. MVP) with projected costs, so the operator can make an
+informed budget decision before any API calls are made.
+
+No AI calls are made during estimation — it uses local heuristics (input size,
+prompt length, historical multipliers) to project output size and cost.
 
 Usage::
 

@@ -1,9 +1,14 @@
-"""Verify task — assess execution evidence against acceptance criteria.
+"""Verify task — the final go/no-go decision on the generated project.
 
-Supports three modes:
-- always_llm: always call the LLM (original behavior)
-- never_llm: always write deterministic VERIFICATION.md, never call LLM
-- auto: call LLM only when configured (llm_on_fail_summary / llm_on_pass_summary)
+Reviews all test evidence and acceptance criteria to produce a verification
+report (VERIFICATION.md) with a recommendation: accept, reject, or flag issues.
+
+Three modes let you balance thoroughness against cost:
+    - **always_llm** — the AI analyzes evidence and writes a detailed verdict (default)
+    - **auto** — skip the AI when results are obvious (everything passed or everything failed)
+    - **never_llm** — purely rule-based verdict with structured issue breakdown (zero AI cost)
+
+May trigger a decision gate if the verdict is "reject" or "conditional accept."
 """
 
 import yaml
@@ -345,6 +350,7 @@ def verify_system() -> None:
             "all_checks_passed": passed,
             "cache_hit": cache_hit,
             "cache_key": cache_key,
+            "usage": provider.total_usage if call_llm else {"input_tokens": 0, "output_tokens": 0, "llm_calls": 0},
         },
     )
 

@@ -1,9 +1,13 @@
-"""Autonomy Engine Dashboard — Streamlit entry point.
+"""Autonomy Engine Dashboard — the web interface for managing pipeline runs.
+
+This is the main entry point for the dashboard.  It provides a visual interface
+for creating projects, launching pipeline runs, viewing audit trails, inspecting
+test evidence, and monitoring costs — all without touching the command line.
 
 Launch with:
     streamlit run dashboard/app.py
 
-Or with a specific project directory:
+Or point it at a specific project:
     AUTONOMY_ENGINE_PROJECT_DIR=/path/to/project streamlit run dashboard/app.py
 """
 

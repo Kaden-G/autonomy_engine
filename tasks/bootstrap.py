@@ -1,4 +1,9 @@
-"""Bootstrap task — verify intake artifacts and scaffold run-scoped directories."""
+"""Bootstrap task — sanity-check that intake is complete before the pipeline starts.
+
+Verifies that all required input files (requirements, constraints, acceptance criteria)
+exist, creates the run-specific directory structure, and records the first entry in
+the audit log.  If any inputs are missing, the pipeline stops here with a clear error.
+"""
 
 from prefect import task
 

@@ -1,12 +1,12 @@
-"""Unified theme constants for the Autonomy Engine dashboard.
+"""Dashboard theme — centralized colors, fonts, and styling for the web UI.
 
-Single source of truth for colors, typography, and reusable CSS helpers.
-Import this module instead of hardcoding hex values in pages/components.
+All visual styling (colors, typography, spacing) is defined here in one place.
+Dashboard pages and components import from this module instead of hardcoding
+color values, which keeps the UI consistent and makes restyling straightforward.
 
-DESIGN PRINCIPLE: Dark-mode native. Streamlit's dark theme is the default.
-All colors are chosen to look right on dark backgrounds. We use `inherit`
-and CSS custom properties where possible so Streamlit's own theming still
-works, but our custom HTML elements must explicitly use dark-friendly colors.
+Design principle: dark-mode native.  All colors are chosen to look right on
+dark backgrounds.  Streamlit's built-in dark theme handles standard elements;
+this module styles the custom HTML elements (cards, badges, timeline, etc.).
 """
 
 # ── Brand / Sidebar ─────────────────────────────────────────────────────────

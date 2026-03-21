@@ -1,9 +1,11 @@
-"""Prefect-free pipeline runner for dashboard-launched builds.
+"""Pipeline runner — launches builds from the dashboard without requiring Prefect.
 
-Calls task functions directly via their ``.fn`` attribute (bypasses @task
-decorator) and replaces the Prefect-dependent ``handle_gate`` with a
-local version that only supports auto/skip policies (the dashboard cannot
-handle Prefect's ``pause_flow_run``).
+When you click "Run Pipeline" in the dashboard, this module executes the pipeline
+stages directly (bypassing the Prefect orchestrator).  Decision gates operate in
+auto/skip mode only — interactive pause-for-human-approval requires the Prefect UI.
+
+After the run completes, it generates a usage report comparing actual token
+consumption against the pre-run estimate.
 
 Usage (from project root):
     python -m dashboard.pipeline_runner --project-dir /path/to/project
@@ -151,6 +153,19 @@ def run_pipeline(
 
     logger.info("Starting verification...")
     _handle_gate(verify_system, "verify")
+
+    # ── Generate usage report (actual vs projected) ──────────────────
+    try:
+        from engine.usage_tracker import build_usage_report, save_usage_report
+        usage_report = build_usage_report(
+            run_id,
+            estimate=estimate if not skip_estimate else None,
+            tier_name=tier.name.value if not skip_estimate else "",
+        )
+        save_usage_report(run_id, usage_report)
+        logger.info("Usage: %s", usage_report.summary())
+    except Exception:
+        logger.warning("Could not generate usage report", exc_info=True)
 
     notify("Autonomous build flow completed (dashboard mode).")
     logger.info("Flow completed successfully.")

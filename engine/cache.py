@@ -1,4 +1,10 @@
-"""Deterministic LLM response cache — reuse prior outputs when inputs haven't changed."""
+"""AI response cache — skip the API call if we've seen this exact request before.
+
+When the pipeline runs the same prompt with the same model and parameters, the
+cached response is reused instead of making another (paid) API call.  Cache keys
+are built from the stage name, prompt content, model, and generation settings.
+Cache entries are immutable — the first response wins and is never overwritten.
+"""
 
 import hashlib
 import json

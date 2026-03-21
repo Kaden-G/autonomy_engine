@@ -1,8 +1,14 @@
-"""Extract task — load FILE_MANIFEST.json and write files to a standalone project folder.
+"""Extract task — turn the AI's output into real files on disk.
 
-Includes a file-count circuit breaker that halts extraction when the
-manifest contains an unreasonable number of files, which is a strong
-signal that the design/implement stages overscoped.
+The AI produces code as text inside a structured document.  This task parses that
+output, validates each file (syntax check for Python, JSON/YAML validation where
+applicable), and writes them into a standalone project folder ready to run.
+
+A safety cutoff ("circuit breaker") halts extraction if the output exceeds size
+limits — this catches cases where the AI over-generated and produced an unreasonable
+number of files, which usually means the design stage overscoped.
+
+No AI is involved in this stage — it's pure parsing and file writing.
 """
 
 import json
@@ -187,6 +193,37 @@ def _build_manifest(extracted_files: list[str], output_dir: Path) -> str:
     return "\n".join(lines)
 
 
+def _validate_content(filepath: str, content: str) -> str | None:
+    """Validate file content by type. Returns a warning string or None if valid.
+
+    Catches malformed content early — before it reaches the test stage — so
+    the pipeline can flag extraction issues separately from test failures.
+    """
+    import ast as _ast
+
+    ext = Path(filepath).suffix.lower()
+
+    if ext == ".py":
+        try:
+            _ast.parse(content, filename=filepath)
+        except SyntaxError as exc:
+            return f"{filepath}: Python syntax error at line {exc.lineno}: {exc.msg}"
+
+    elif ext == ".json":
+        try:
+            json.loads(content)
+        except json.JSONDecodeError as exc:
+            return f"{filepath}: Invalid JSON: {exc.msg} (line {exc.lineno})"
+
+    elif ext in (".yml", ".yaml"):
+        try:
+            yaml.safe_load(content)
+        except yaml.YAMLError as exc:
+            return f"{filepath}: Invalid YAML: {exc}"
+
+    return None
+
+
 _DEV_TOOLS = ["ruff", "mypy"]
 
 
@@ -256,13 +293,27 @@ def extract_project() -> None:
     # Output directory is a sibling of the active project directory
     output_dir = get_project_dir().parent / slug
 
-    # Write each file (with path safety validation)
+    # Write each file (with path safety + content validation)
     written_paths: list[str] = []
+    validation_warnings: list[str] = []
     for entry in manifest.files:
         dest = _safe_path(output_dir, entry.path)
         dest.parent.mkdir(parents=True, exist_ok=True)
+
+        # Validate content by file type before writing
+        warning = _validate_content(entry.path, entry.content)
+        if warning:
+            validation_warnings.append(warning)
+
         dest.write_text(entry.content + "\n")
         written_paths.append(entry.path)
+
+    if validation_warnings:
+        logger.warning(
+            "Content validation: %d warning(s):\n%s",
+            len(validation_warnings),
+            "\n".join(f"  - {w}" for w in validation_warnings),
+        )
 
     # Post-extraction: sanitize requirements.txt (relax exact pins, add dev tools)
     _sanitize_requirements(output_dir)

@@ -1,7 +1,9 @@
-"""Project context — resolved paths for engine and project directories.
+"""Project context — "where do files live?" resolved once at startup.
 
-Single ``init(project_dir)`` call at startup.  All modules import path
-accessors from here instead of computing paths at import time.
+The engine can run against its own directory or a separate project folder.
+This module resolves that choice once at startup, then provides path
+accessors (get_state_dir, get_config_path, etc.) that every other module
+uses.  No module computes paths on its own — they all ask this module.
 """
 
 from pathlib import Path

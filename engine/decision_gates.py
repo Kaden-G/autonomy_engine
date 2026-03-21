@@ -1,17 +1,20 @@
-"""Decision gate system — run-scoped, validated human approvals.
+"""Decision gates — human approval checkpoints in the pipeline.
 
-Decisions are stored as structured JSON records under
-``state/runs/<run_id>/decisions/<gate>.json``.  Each record includes
-the run ID, gate name, stage, allowed options, selected option,
-actor, timestamp, and rationale.  The selected option is validated
-against the allowed list at save time.
+At critical moments (architecture review, test failure triage, final sign-off),
+the pipeline can pause and ask a human to approve before continuing.  This module
+manages those checkpoints.
 
-Gate *policies* are loaded from ``templates/DECISION_GATES.yml`` and
-control what happens when a ``DecisionRequired`` exception is raised:
+Every decision is recorded as a structured JSON file (who approved, what they
+chose, when, and why) — creating an auditable record of human oversight.
 
-- **pause**: block for human input (via ``on_pause`` callback)
-- **auto**: auto-select ``default_option`` (or the first option)
-- **skip**: swallow the exception and continue
+Gate behavior is controlled per-stage via a policy file (DECISION_GATES.yml):
+    - **pause**: stop and wait for a human to approve or redirect
+    - **auto**: automatically select the configured default option
+    - **skip**: proceed without stopping
+
+Technical details:
+    Decisions live at ``state/runs/<run_id>/decisions/<gate>.json``.
+    The selected option is validated against the allowed list at save time.
 """
 
 import json

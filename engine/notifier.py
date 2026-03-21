@@ -1,10 +1,11 @@
-"""Notification via Python logging.
+"""Notification stub — sends pipeline status messages to the log.
 
-All notifications are emitted as log messages.  To send real alerts
-(Slack, email, PagerDuty, etc.) replace or extend this module.
+Currently, all notifications are written to the application log.  This is a
+deliberate extension point: to send alerts to Slack, email, PagerDuty, or
+another service, replace or extend this module with your own integration.
 
 The ``notifications.enabled`` flag in ``config.yml`` controls whether
-messages are logged at INFO (enabled) or suppressed (disabled).
+messages are logged (enabled) or silently dropped (disabled).
 """
 
 import logging

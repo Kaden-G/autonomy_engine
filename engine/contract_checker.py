@@ -1,13 +1,18 @@
-"""Contract compliance checker — verifies that extracted output matches the design contract.
+"""Contract compliance checker — did the AI follow the blueprint?
 
-Run after extraction to catch:
-    1. Missing files (contract says X files, only Y were produced).
-    2. Extra files (files not in any component's plan).
-    3. File budget violations (component exceeds its max_files).
-    4. Missing canonical types (types defined in contract but not in output).
-    5. Type field mismatches (output has different fields than contract specifies).
+After the AI generates code, this module checks the output against the design
+contract (the structured JSON blueprint created during the design stage).
+Think of it as an inspector checking a building against the approved plans.
 
-Returns a structured report that the test stage can save as evidence.
+What it checks:
+    1. Missing files — the contract says a file should exist, but it wasn't produced.
+    2. Extra files — files were produced that aren't in any component's plan.
+    3. Budget violations — a component produced more files than its allowed maximum.
+    4. Missing data types — shared type definitions from the contract aren't in the code.
+    5. Field mismatches — a data type exists but is missing expected fields.
+
+The result is a structured report (pass/fail with detailed issues) that feeds
+into the test stage and ultimately the verification decision.
 """
 
 from __future__ import annotations

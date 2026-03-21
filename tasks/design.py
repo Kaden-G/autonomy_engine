@@ -1,9 +1,15 @@
-"""Design task — LLM generates architecture from requirements.
+"""Design task — the AI creates the system architecture and binding contract.
 
-Produces two outputs:
-    1. ``state/designs/ARCHITECTURE.md`` — prose architecture document.
-    2. ``state/designs/DESIGN_CONTRACT.json`` — structured, validated contract
-       that the Implement stage uses as its authoritative specification.
+This is where the AI reads the project requirements and produces two outputs:
+    1. ARCHITECTURE.md — a human-readable architecture document explaining the
+       design decisions, component structure, and technology choices.
+    2. DESIGN_CONTRACT.json — the machine-readable blueprint that controls everything
+       downstream.  This contract specifies exactly which files to create, which data
+       types to define, and how components connect.  The implementation stage treats
+       this contract as law.
+
+This stage may pause at a decision gate for human approval of the architecture
+before proceeding to code generation.
 """
 
 import logging
@@ -120,5 +126,6 @@ def design_system() -> None:
             "cache_key": cache_key,
             "contract_extracted": contract_extracted,
             "contract_errors": contract_errors,
+            "usage": provider.total_usage,
         },
     )

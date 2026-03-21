@@ -1,21 +1,19 @@
-"""Design contract — structured, validated handoff between Design and Implement.
+"""Design contract — the binding blueprint between the design and implementation stages.
 
-The Design stage produces an ARCHITECTURE.md (prose) **and** a DESIGN_CONTRACT.json
-(structured).  The contract is the authoritative specification — if the prose and
-the contract disagree, the contract wins.
+When the AI designs a system, it produces two things: a human-readable architecture
+document (ARCHITECTURE.md) and a machine-readable contract (DESIGN_CONTRACT.json).
+The contract is the authoritative spec — if the prose and the contract disagree,
+the contract wins.
 
-The contract is:
-  1. Extracted from the LLM's design output (embedded JSON block).
-  2. Validated against the schema below (Pydantic).
-  3. Saved as ``state/designs/DESIGN_CONTRACT.json``.
-  4. Read by the Implement stage, which uses it to:
-     - Know exactly how many components to implement.
-     - Know exactly which files each component should produce.
-     - Know exactly which types each component imports/exports.
-     - Enforce file budgets per component.
+Think of it like an engineering drawing with tolerances: the AI can choose *how* to
+implement the logic inside each file, but the contract dictates *which* files exist,
+*what* data types they define, and *how* components connect to each other.
 
-This is the "engineering drawing with tolerances" — the LLM gets no room
-for interpretation on structure, only on implementation logic within each file.
+The contract lifecycle:
+    1. Extracted from the AI's design output (embedded JSON block)
+    2. Validated with 15+ automated checks (duplicates, phantom dependencies, etc.)
+    3. Saved as ``state/designs/DESIGN_CONTRACT.json``
+    4. Fed to the implementation stage, which uses it to know exactly what to build
 """
 
 from __future__ import annotations

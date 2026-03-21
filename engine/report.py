@@ -1,11 +1,13 @@
-"""Audit bundle exporter — packages a run's artifacts into a .tar.gz.
+"""Audit bundle exporter — package an entire run into a shareable archive.
+
+After a pipeline run completes, this module bundles everything an auditor or
+stakeholder would need to review the run: the full audit log, configuration
+snapshot, test evidence, human decisions, artifact manifest, and an integrity
+verification result.  The output is a compressed .tar.gz file.
 
 Usage::
 
     python -m engine.report --run-id <id> [--out path] [--project-dir dir]
-
-The resulting archive contains the run's trace, config snapshot, evidence,
-decisions, a rebuilt artifact manifest, and an integrity check result.
 """
 
 import argparse

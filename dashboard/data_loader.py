@@ -1,8 +1,9 @@
-"""Data loader for the Autonomy Engine dashboard.
+"""Data loader — reads pipeline data from disk for the dashboard to display.
 
-Reads state files, trace entries, evidence records, and decisions
-directly from the filesystem. Does NOT import engine modules to avoid
-Prefect initialization side effects.
+The dashboard needs to show audit logs, test evidence, decisions, and configuration
+without actually running the pipeline.  This module reads all of that directly from
+the filesystem.  It deliberately avoids importing any engine modules so that loading
+the dashboard doesn't trigger pipeline initialization.
 """
 
 import hashlib

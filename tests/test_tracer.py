@@ -1,4 +1,4 @@
-"""Tests for engine.tracer — append-only hash-chained tracing."""
+"""Tests for engine.tracer — append-only HMAC-authenticated hash chain."""
 
 import json
 
@@ -8,7 +8,7 @@ import engine.context
 import engine.tracer as tracer
 from engine.tracer import (
     GENESIS_HASH,
-    _compute_entry_hash,
+    _compute_entry_hmac,
     init_run,
     trace,
     verify_trace_integrity,
@@ -24,10 +24,12 @@ def _isolated_state(tmp_path):
     tracer._run_id = None
     tracer._prev_hash = GENESIS_HASH
     tracer._seq = 0
+    tracer._hmac_key = b""
     yield
     tracer._run_id = None
     tracer._prev_hash = GENESIS_HASH
     tracer._seq = 0
+    tracer._hmac_key = b""
 
 
 def _read_entries(tmp_path) -> list[dict]:
@@ -56,6 +58,19 @@ class TestInitRun:
         r1 = init_run()
         r2 = init_run()
         assert r1 != r2
+
+    def test_creates_hmac_key_file(self, tmp_path):
+        run_id = init_run()
+        key_path = tmp_path / "state" / "runs" / run_id / ".trace_key"
+        assert key_path.exists()
+        assert len(key_path.read_bytes()) == 32  # 256-bit key
+
+    def test_different_runs_get_different_keys(self, tmp_path):
+        r1 = init_run()
+        k1 = (tmp_path / "state" / "runs" / r1 / ".trace_key").read_bytes()
+        r2 = init_run()
+        k2 = (tmp_path / "state" / "runs" / r2 / ".trace_key").read_bytes()
+        assert k1 != k2
 
 
 # ── Append behavior ─────────────────────────────────────────────────────────
@@ -267,7 +282,7 @@ class TestVerifyIntegrity:
         run_id = init_run()
         trace(task="a", inputs=[], outputs=[])
         trace(task="b", inputs=[], outputs=[])
-        # Tamper: change the task name without recomputing entry_hash
+        # Tamper: change the task name without recomputing HMAC
         trace_file = tmp_path / "state" / "runs" / run_id / "trace.jsonl"
         lines = trace_file.read_text().strip().splitlines()
         entry = json.loads(lines[0])
@@ -276,24 +291,55 @@ class TestVerifyIntegrity:
         trace_file.write_text("\n".join(lines) + "\n")
         ok, errors = verify_trace_integrity(run_id)
         assert ok is False
-        assert any("entry_hash mismatch" in e for e in errors)
+        assert any("HMAC mismatch" in e for e in errors)
+
+    def test_recomputed_chain_without_key_fails(self, tmp_path):
+        """Even if an attacker recomputes all hashes, they can't forge valid HMACs
+        without the key. This is the critical improvement over plain SHA-256."""
+        import hashlib
+        run_id = init_run()
+        trace(task="a", inputs=[], outputs=[])
+        trace(task="b", inputs=[], outputs=[])
+        # Attack: modify entry AND try to recompute hash (with wrong key)
+        trace_file = tmp_path / "state" / "runs" / run_id / "trace.jsonl"
+        lines = trace_file.read_text().strip().splitlines()
+        entry = json.loads(lines[0])
+        stored_hash = entry.pop("entry_hash")
+        entry["task"] = "TAMPERED"
+        # Attacker uses plain SHA-256 (no key) to compute new hash
+        fake_hash = hashlib.sha256(
+            json.dumps(entry, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        entry["entry_hash"] = fake_hash
+        # Also update chain forward
+        entry2 = json.loads(lines[1])
+        entry2.pop("entry_hash")
+        entry2["prev_hash"] = fake_hash
+        fake_hash2 = hashlib.sha256(
+            json.dumps(entry2, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        entry2["entry_hash"] = fake_hash2
+        lines[0] = json.dumps(entry, separators=(",", ":"))
+        lines[1] = json.dumps(entry2, separators=(",", ":"))
+        trace_file.write_text("\n".join(lines) + "\n")
+        ok, errors = verify_trace_integrity(run_id)
+        assert ok is False, "Attacker-recomputed chain must NOT verify"
 
     def test_broken_prev_hash_chain_detected(self, tmp_path):
         run_id = init_run()
         trace(task="a", inputs=[], outputs=[])
         trace(task="b", inputs=[], outputs=[])
-        # Break chain: change prev_hash on second entry (recompute its entry_hash)
+        # Break chain: change prev_hash on second entry
         trace_file = tmp_path / "state" / "runs" / run_id / "trace.jsonl"
         lines = trace_file.read_text().strip().splitlines()
         entry = json.loads(lines[1])
-        entry.pop("entry_hash")
         entry["prev_hash"] = "f" * 64
-        entry["entry_hash"] = _compute_entry_hash(entry)
+        # Even recomputing with the right key won't save prev_hash mismatch
         lines[1] = json.dumps(entry, separators=(",", ":"))
         trace_file.write_text("\n".join(lines) + "\n")
         ok, errors = verify_trace_integrity(run_id)
         assert ok is False
-        assert any("prev_hash mismatch" in e for e in errors)
+        assert any("prev_hash mismatch" in e or "HMAC mismatch" in e for e in errors)
 
     def test_missing_trace_file(self, tmp_path):
         run_id = init_run()
@@ -322,23 +368,56 @@ class TestVerifyIntegrity:
         trace_file.write_text("\n".join(lines) + "\n")
         ok, errors = verify_trace_integrity(run_id)
         assert ok is False
-        assert any("prev_hash mismatch" in e for e in errors)
+
+    def test_missing_hmac_key_fails_verification(self, tmp_path):
+        """If the HMAC key is deleted, verification fails with a clear message."""
+        run_id = init_run()
+        trace(task="a", inputs=[], outputs=[])
+        # Delete the key
+        key_path = tmp_path / "state" / "runs" / run_id / ".trace_key"
+        key_path.unlink()
+        ok, errors = verify_trace_integrity(run_id)
+        assert ok is False
+        assert any("HMAC key" in e for e in errors)
+
+    def test_seq_gap_detected(self, tmp_path):
+        """Seq numbers must be contiguous."""
+        run_id = init_run()
+        trace(task="a", inputs=[], outputs=[])
+        trace(task="b", inputs=[], outputs=[])
+        trace(task="c", inputs=[], outputs=[])
+        # Delete middle entry — seq gap 0,2
+        trace_file = tmp_path / "state" / "runs" / run_id / "trace.jsonl"
+        lines = trace_file.read_text().strip().splitlines()
+        del lines[1]
+        trace_file.write_text("\n".join(lines) + "\n")
+        ok, errors = verify_trace_integrity(run_id)
+        assert ok is False
+        assert any("seq mismatch" in e for e in errors)
 
 
-# ── _compute_entry_hash ─────────────────────────────────────────────────────
+# ── _compute_entry_hmac ──────────────────────────────────────────────────────
 
 
-class TestComputeEntryHash:
+class TestComputeEntryHmac:
     def test_deterministic(self):
+        key = b"test_key_32_bytes_______________"
         entry = {"task": "x", "seq": 0, "prev_hash": GENESIS_HASH}
-        assert _compute_entry_hash(entry) == _compute_entry_hash(entry)
+        assert _compute_entry_hmac(entry, key) == _compute_entry_hmac(entry, key)
 
     def test_different_entries_different_hashes(self):
+        key = b"test_key_32_bytes_______________"
         a = {"task": "x", "seq": 0}
         b = {"task": "y", "seq": 0}
-        assert _compute_entry_hash(a) != _compute_entry_hash(b)
+        assert _compute_entry_hmac(a, key) != _compute_entry_hmac(b, key)
+
+    def test_different_keys_different_hashes(self):
+        entry = {"task": "x", "seq": 0}
+        h1 = _compute_entry_hmac(entry, b"key_one_32_bytes________________")
+        h2 = _compute_entry_hmac(entry, b"key_two_32_bytes________________")
+        assert h1 != h2
 
     def test_returns_64_char_hex(self):
-        h = _compute_entry_hash({"a": 1})
+        h = _compute_entry_hmac({"a": 1}, b"key")
         assert len(h) == 64
         int(h, 16)

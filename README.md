@@ -1,72 +1,274 @@
 # Autonomy Engine v1.3
 
-![Tests](https://img.shields.io/badge/tests-259%20collected-brightgreen)
+![Tests](https://img.shields.io/badge/tests-265%20collected-brightgreen)
 
-A Prefect-based autonomous build engine that turns project specs into working software — with human-in-the-loop decision gates, cryptographic traceability, and strict contract enforcement between pipeline stages.
+An autonomous software build pipeline that turns a project description into working, tested code — with human approval gates, tamper-evident audit trails, and strict quality contracts that keep AI-generated output on-spec.
+
+Built on [Prefect](https://www.prefect.io/) (workflow orchestration) and compatible with Claude and OpenAI as the underlying AI models.
+
+---
+
+## The Problem This Solves
+
+When you ask an AI model to write an entire software project, three things consistently go wrong:
+
+1. **Drift.** The AI forgets decisions it made earlier and contradicts itself across files.
+2. **No receipts.** You can't prove what the AI was asked, what it produced, or whether anyone reviewed it.
+3. **All-or-nothing.** The output is either accepted wholesale or thrown away — there's no structured quality gate.
+
+The Autonomy Engine addresses all three by wrapping AI code generation in a pipeline with formal contracts, evidence-based testing, and a cryptographically signed audit trail.
+
+---
+
+## How It Works (The 60-Second Version)
+
+```
+You describe what to build
+        ↓
+Engine creates a binding design contract (JSON blueprint)
+        ↓
+AI writes code in chunks, each checked against the contract
+        ↓
+Code is extracted into a standalone project folder
+        ↓
+Automated tests run: syntax, imports, linting, type safety, contract compliance
+        ↓
+A verification report gives a go/no-go recommendation
+        ↓
+Every step is recorded in a tamper-evident audit log
+```
+
+At any stage, the pipeline can pause and ask a human to approve before continuing. You stay in control; the AI stays in its lane.
+
+---
 
 ## What This Is For
 
-- Automating structured software build workflows (design → implement → extract → test → verify)
-- Enforcing strict contracts between pipeline stages so LLMs can't drift from the design
-- Providing human oversight at critical decision points via Prefect's pause/resume
-- Maintaining full traceability of every step, prompt, and decision in hash-chained `trace.jsonl`
-- Supporting multiple LLM providers (Claude, OpenAI) behind a unified interface
-- Extracting generated code into a standalone, ready-to-run project folder
+- Automating structured build workflows where traceability matters
+- Enforcing that AI-generated code matches the approved design — no silent deviations
+- Providing human oversight at critical decision points (architecture, test failures, final sign-off)
+- Maintaining a complete, tamper-evident record of every prompt, decision, and output
+- Comparing actual AI costs (tokens used) against pre-run estimates
 
 ## What This Is NOT For
 
-- Replacing human judgment on ethical, security, or architectural decisions
-- Unsupervised production deployments
+- Replacing human judgment on security, ethics, or architecture
+- Unsupervised production deployments — this is a supervised tool
 - General-purpose AI agent framework — this is a specific pipeline, not a platform
 - Real-time or latency-sensitive workflows
 
+---
+
 ## Architecture
+
+The engine has two phases: human-driven intake (you describe the project) and machine-driven execution (the pipeline builds it).
 
 ```
 ┌──────────────────────────┐
 │ Intake Layer             │  ← Phase 0: human-driven, blocking
-│ (intake CLI / Dashboard) │
+│ (CLI or web dashboard)   │     You describe what to build
 └────────────┬─────────────┘
-             │ validated, complete
+             │ validated project spec
 ┌────────────▼─────────────┐
-│ Normalized Project Spec  │  ← machine contract (what to build)
-│ (state/inputs/)          │
+│ Normalized Project Spec  │  ← The "contract" between you and the engine
+│ (state/inputs/)          │     Machine-readable, no ambiguity
 └────────────┬─────────────┘
-             │ read-only
+             │ read-only from here on
 ┌────────────▼─────────────┐
-│ Autonomous Engine        │  ← Phase 1: machine-driven, no ambiguity
-│ (Prefect flow)           │     runtime config from config.yml (how to run)
+│ Autonomous Engine        │  ← Phase 1: machine-driven pipeline
+│ (Prefect flow)           │     Config says how to run (model, budget, gates)
 └──────────────────────────┘
 ```
 
 ### Pipeline Stages
 
 ```
-[intake]    ──→ state/inputs/project_spec.yml + rendered artifacts
+[intake]    ──→ Project spec + requirements          (human provides input)
                     ↓
-[bootstrap] ──→ verify inputs, init trace.jsonl
+[bootstrap] ──→ Validate inputs, start audit log     (sanity check)
                     ↓
-[design]    ──→ state/designs/              ←── DESIGN_CONTRACT.json + ARCHITECTURE.md
-                │                                may pause at decision gate
-                │ canonical types + component contracts
+[design]    ──→ Architecture + design contract        (AI designs the system)
+                │   May pause for human approval
                 ↓
-[implement] ──→ state/implementations/      ←── contract-driven chunked implementation
-                │                                each chunk gets canonical schema + file list
+[implement] ──→ Generated code, chunk by chunk        (AI writes code to contract)
+                │   Each chunk is checked against the design
                 ↓
-[extract]   ──→ ../<project-name>/          ←── standalone project folder
-                 + state/build/MANIFEST.md       circuit breaker enforces file/size limits
-                    ↓
-[test]      ──→ state/tests/                ←── auto-detect checks + contract compliance
-                │                                mandatory type/import/lint validation
+[extract]   ──→ Standalone project folder             (code is written to disk)
+                │   Safety limits on file count and size
                 ↓
-[verify]    ──→ state/tests/VERIFICATION.md ←── structural issue analysis + go/no-go
+[test]      ──→ Automated quality checks              (syntax, imports, lint, types)
+                │   Plus contract compliance verification
+                ↓
+[verify]    ──→ Go/no-go recommendation               (AI or rule-based verdict)
 ```
 
-The **extract** step parses `IMPLEMENTATION.md` for fenced code blocks marked with
-bold filenames (`**path/to/file.ext**`) or header filenames (`### file.ext`), then
-writes each file to a sibling directory named after the project. No LLM call — pure
-regex parsing. A circuit breaker halts extraction if the output exceeds tier-appropriate
-file count or byte size limits (MVP: 80 files / 750KB, Premium: 250 files / 5MB).
+The **extract** step parses the AI's output for code blocks, then writes each file to a project folder. A safety cutoff (called a "circuit breaker") halts extraction if the output exceeds size limits — 80 files / 750 KB for MVP tier, 250 files / 5 MB for Premium.
+
+---
+
+## Core Principles
+
+1. **If it isn't written down, it doesn't exist** — pipeline stages communicate through files, not in-memory data. Everything is inspectable.
+2. **Contracts, not interpretation** — the AI receives a structured JSON contract (exact file lists, data type definitions, dependency maps) instead of vague prose instructions. This is how the engine prevents drift.
+3. **Gates are policy, not behavior** — when the pipeline encounters a decision point, what happens (pause for human, auto-approve, or skip) is controlled by a policy file, not hard-coded.
+4. **Structured state** — all pipeline artifacts live in organized subfolders, not a flat directory. Any auditor can navigate the run history.
+5. **Tamper-evident traceability** — every step is logged with HMAC-SHA256 authentication (a cryptographic method that detects any after-the-fact modification to the log). See [Security Model](#security-model) for details.
+6. **Spec says what, config says how** — the project spec captures *what to build*; `config.yml` captures *how to run the engine* (which AI model, budget limits, gate policies).
+
+---
+
+## Contract System
+
+The contract system is the engine's primary defense against **AI interpretation drift** — the tendency for an AI to forget or reinterpret decisions made earlier in the pipeline. This is the root cause of most cross-file inconsistencies (wrong field names, missing files, imports that reference things that don't exist).
+
+### Design Contract
+
+The design stage produces a `DESIGN_CONTRACT.json` alongside a human-readable `ARCHITECTURE.md`. The contract is a structured JSON file that specifies exactly what the implementation stage must produce:
+
+- **Components** — each with an exact file list, dependency declarations, and a file budget (max number of files)
+- **Canonical types** — shared data structures (think: "a User always has these fields, defined in this file"). Every implementation chunk receives these definitions verbatim so the AI can't invent its own versions.
+- **Tech decisions** — locked-in choices with rationale, so the AI doesn't second-guess them mid-build
+- **Import maps** — which component is allowed to depend on which
+
+The contract is validated at creation time with 15+ automated checks (duplicate detection, phantom dependency references, budget overflows, type reference validity).
+
+### Contract Compliance Checker
+
+After the AI writes code and it's extracted to disk, the compliance checker verifies the output against the design contract:
+
+- **Missing files** — the contract says file X should exist, but it wasn't produced
+- **Extra files** — files were produced that aren't in any component's plan
+- **Budget violations** — a component produced more files than allowed
+- **Type integrity** — the canonical types appear in the correct files with the expected fields
+
+Results are saved as structured evidence records that feed into testing and verification.
+
+---
+
+## Tier System
+
+Before launching a build, you choose a tier that controls the AI's output budget and cost:
+
+- **Premium** — full output budget, no scope restrictions, higher AI cost. Best for production-quality output with thorough documentation.
+- **MVP (Minimum Viable)** — hard limits enforced at every level. Best for quick prototyping or cost-conscious builds.
+  - Design: max 5 components, 40 files
+  - Per-chunk implementation: max 10 files
+  - Extraction safety cutoff: 80 files / 750 KB
+  - Dashboard shows estimated savings vs. Premium before you commit
+
+---
+
+## Test & Verification
+
+### Auto-Detect Checks
+
+The test stage inspects the extracted project and automatically selects appropriate quality checks based on the project type:
+
+**Node.js / TypeScript projects** (detected by `package.json`): dependency install, type checking, build, lint, tests.
+
+**Python projects** (detected by `pyproject.toml` or `requirements.txt`): dependency install, syntax validation, import resolution, lint (ruff), type checking (mypy), unit tests (pytest). Structural checks are always mandatory.
+
+### Structural Issue Analysis
+
+The verification stage classifies failures into categories — type errors, import errors, lint errors, build errors, test failures, and contract compliance issues. Each category gets specific diagnostic output. When the AI-powered verification path is used, it receives this classification so it can provide targeted root-cause analysis instead of a generic summary.
+
+### Evidence Records
+
+Every check produces a structured JSON evidence record containing the command that ran, its exit code, full output, timestamps, and environment metadata. Think of these as the "test receipts" — they feed into the dashboard's evidence viewer and the verification stage's analysis.
+
+---
+
+## Decision Gates
+
+At critical moments during the pipeline, a **decision gate** can pause execution and require human input. Gate behavior is controlled per-stage via a policy file (`DECISION_GATES.yml`):
+
+- **pause** — stop and wait for a human to approve or redirect (default for the design stage)
+- **auto** — automatically select the configured default option
+- **skip** — proceed without stopping (default for implement, test, verify)
+
+Gates trigger on architectural tradeoffs, test failures, and verification rejection — not on missing requirements (those are caught at intake before the pipeline starts).
+
+---
+
+## Dashboard
+
+A web-based dashboard (built with Streamlit) provides a visual interface for the full pipeline lifecycle.
+
+**Install and launch:**
+```bash
+pip install -e ".[dashboard]"
+streamlit run dashboard/app.py
+```
+
+Or point it at a specific project:
+```bash
+AUTONOMY_ENGINE_PROJECT_DIR=/path/to/project streamlit run dashboard/app.py
+```
+
+**Navigation** is organized into two groups:
+
+*Main:*
+- **Dashboard** — pipeline status with real pass/fail indicators, recent runs, cache statistics
+- **Create Project** — form-based intake with project management (load previous specs, view run history)
+- **Run Pipeline** — tier selection with cost estimates, live progress with trace timeline
+
+*Security & Ops:*
+- **Inspector** — detailed trace timeline, evidence records, decisions, artifacts, and config snapshot per run
+- **Audit Trail** — visual hash chain with integrity verification and export to file
+- **Configuration** — active AI model settings, gate policies, sandbox config, approved check commands
+- **Benchmarks** — per-stage timing, cache hit rates, actual vs. projected token usage
+
+Pipeline status indicators reflect real evidence: green only when the stage ran and all checks passed, red when checks failed, amber when in progress, gray when pending. The dashboard never shows a false "success."
+
+---
+
+## Security Model
+
+This section documents what the engine protects against and — just as importantly — what it doesn't. Honest threat boundaries are more useful than vague claims.
+
+### Audit Log Integrity (HMAC-SHA256)
+
+**What it is:** Every pipeline run generates a unique cryptographic key. Each log entry is signed with that key using HMAC-SHA256 (a standard method for creating a tamper-evident signature). Entries are also chained — each one references the signature of the previous entry — so inserting, deleting, or reordering entries breaks the chain.
+
+**What this protects against:** If someone edits the audit log after the fact (for example, changing a "test failed" result to "test passed"), the signatures won't match and verification will flag the tampering. Unlike a plain hash chain (which an attacker could recompute from scratch), the HMAC approach requires the secret key — so modifying and re-signing the log isn't possible without it.
+
+**What this does NOT protect against:** An attacker with access to both the log file and the key file on disk can forge valid entries. In a production environment, the key should be stored in an external key management system (KMS or HSM). The current design is appropriate for development-time integrity verification, not adversarial forensics.
+
+### Workspace Isolation
+
+**What it is:** The test stage runs AI-generated code in a temporary directory with its own isolated environment. Dependencies are installed from the project's requirements and cached for reuse.
+
+**What this provides:** File isolation (generated code can't overwrite engine files), dependency isolation (project packages don't pollute the host system), and automatic cleanup.
+
+**What this does NOT provide:** Operating-system-level sandboxing. The generated code runs as the same user with full network and file access. There are no containers, no system-call filtering, and no network restrictions. For running untrusted AI output in a higher-security context, wrap execution in Docker or a similar container. The engine assumes a supervised workflow where a human reviews generated code before deployment.
+
+### Path Traversal Protection
+
+The extract stage validates every output file path to prevent directory escape attacks (e.g., `../../etc/passwd`). Absolute paths, parent traversal (`..`), and empty path segments are all rejected.
+
+### Content Validation
+
+Extracted Python files are validated for correct syntax, resolvable imports, and lint compliance. The contract compliance checker verifies that the output matches the design contract's file list, size budgets, and data type definitions.
+
+**Known limitation:** The type checker uses text matching (checking that type and field names appear in the file), not full code structure analysis. A future improvement would parse actual class definitions for exact matching.
+
+### API Key Handling
+
+API keys are loaded from a `.env` file (which is excluded from version control) and never appear in audit logs, prompts, or output. A pre-commit hook rejects any attempt to commit files containing key patterns.
+
+---
+
+## Audit Reports
+
+After a run completes, export a self-contained audit bundle:
+
+```bash
+python -m engine.report --run-id <id> [--out path] [--project-dir dir]
+```
+
+This produces a compressed archive containing the full trace, config snapshot, evidence records, decisions, a rebuilt artifact manifest, and an integrity verification result. Useful for compliance reviews or sharing results with stakeholders who don't have access to the dashboard.
+
+---
 
 ## Quickstart
 
@@ -83,153 +285,6 @@ pip install -e ".[dashboard]"
 streamlit run dashboard/app.py
 ```
 
-### Core Principles
-
-1. **If it isn't written, it doesn't exist** — tasks communicate through files in `state/`, not return values
-2. **Contracts, not interpretation** — structured JSON contracts replace prose handoffs between stages; LLMs get exact file lists, canonical types, and dependency graphs instead of vague instructions
-3. **Gates are policy, not behavior** — tasks raise `DecisionRequired`; the flow applies the policy from `DECISION_GATES.yml`
-4. **Structured state** — `state/` has predefined subfolders, not a flat directory
-5. **Traceability** — every task appends to `trace.jsonl` with inputs, outputs, model, provider, max_tokens, and prompt hash
-6. **Spec says what, config says how** — the project spec captures *what to build*; `config.yml` captures *how to run the engine* (LLM provider, sandbox, notifications)
-
-## Contract System
-
-The contract system is the engine's defense against LLM interpretation drift — the root cause of most cross-chunk inconsistencies (wrong field names, missing files, phantom imports).
-
-### Design Contract
-
-The design stage produces `DESIGN_CONTRACT.json` alongside `ARCHITECTURE.md`. This structured JSON specifies exactly what the implementation stage must produce:
-
-- **Components** with exact file lists, dependency declarations, and file budgets
-- **Canonical types** with field definitions, kinds (interface/class/enum), and owning file paths
-- **Tech decisions** with rationale (so the LLM doesn't second-guess them)
-- **Import maps** declaring which components depend on which
-
-The contract is validated at creation time (15+ checks for duplicates, phantom dependencies, budget overflows, type reference validity).
-
-### Canonical Type Schema
-
-Every implementation chunk receives the canonical type schema as authoritative law. Types are defined once in the design contract and injected verbatim into every chunk's prompt. The rules are strict: use exact names, don't add fields, don't rename fields.
-
-### Contract Compliance Checker
-
-After extraction, the contract checker validates the output against the design:
-
-- Missing files (contract says X, only Y produced)
-- Extra files (produced but not in any component's plan)
-- Per-component and total file budget violations
-- Canonical type presence (type name exists in the right file)
-- Field presence (expected fields appear in the file)
-
-Results are saved as evidence records that feed into the test and verify stages.
-
-### Spec Normalizer
-
-User input is normalized before reaching the design stage. The normalizer parses `project_spec.yml` into structured fields, detects ambiguous tech choices (e.g., "React or Vue"), assigns feature priorities, and splits constraints into categories.
-
-## Tier System
-
-The engine supports two build tiers:
-
-- **Premium** — full output budget, higher cost, no scope restrictions
-- **MVP** — hard limits enforced at every level:
-  - Design guidance mandates ≤5 components, ≤40 files
-  - Per-chunk implementation ceiling of 10 files
-  - Circuit breaker halts extraction at 80 files / 750KB
-  - Cost estimate shows ~savings vs Premium
-
-Tier selection happens in the dashboard before launch, with per-stage token breakdowns and cost estimates.
-
-## Test & Verification
-
-### Auto-Detect Checks
-
-The test stage inspects the extracted project and automatically discovers appropriate checks:
-
-**Node.js/TypeScript projects** (detected via `package.json`): npm install, typecheck (tsc --noEmit), build, lint, test — in that order.
-
-**Python projects** (detected via `pyproject.toml` / `requirements.txt`): pip install, syntax check (py_compile), import validation (ast-based), ruff lint, mypy typecheck, pytest — always includes mandatory structural checks.
-
-### Structural Issue Analysis
-
-The verify stage classifies failures into categories: type errors, import errors, lint errors, build errors, test failures, and contract compliance issues. Each category gets specific diagnostic output and actionable guidance. The LLM-powered verify path receives this classification so it can give targeted root-cause analysis instead of generic summaries.
-
-### Evidence Records
-
-Every check produces a structured JSON evidence record with exit code, stdout, stderr, timestamps, and environment metadata. These feed into the dashboard's evidence viewer and the verify stage's analysis.
-
-## Decision Gates
-
-Gate policies are defined in `templates/DECISION_GATES.yml` with three modes per stage:
-
-- **pause** — block for human input via Prefect UI (default for `design`)
-- **auto** — auto-select the configured default option
-- **skip** — swallow the gate and continue (default for `implement`, `test`, `verify`)
-
-Gates trigger on architectural tradeoffs (design stage), test failures (test stage), and verification rejection (verify stage). Not for missing requirements or incomplete specs — those are blocked at intake.
-
-## Dashboard
-
-The dashboard is a Streamlit app with dark-mode native styling.
-
-**Install and launch:**
-```bash
-pip install -e ".[dashboard]"
-streamlit run dashboard/app.py
-```
-
-Or specify a project directory:
-```bash
-AUTONOMY_ENGINE_PROJECT_DIR=/path/to/project streamlit run dashboard/app.py
-```
-
-**Navigation** is organized into two groups:
-
-*Main:*
-- **Dashboard** — Pipeline status (with evidence-aware pass/fail), recent runs, cache stats
-- **Create Project** — Form-based intake with project manager (load previous, clear, view run history)
-- **Run Pipeline** — Tier selection, cost estimates, live progress with trace timeline
-
-*Security & Ops:*
-- **Inspector** — Detailed trace timeline, evidence records, decisions, artifacts, config snapshot per run
-- **Audit Trail** — Hash chain visualization with integrity verification and export
-- **Configuration** — Active LLM settings, gate policies, sandbox config, check commands
-- **Benchmarks** — Per-stage timing charts, cache hit rates, before/after comparison
-
-Pipeline stage indicators reflect actual status: green only when the stage ran successfully with passing evidence, red when checks failed, amber when in progress, gray when pending. The dashboard never blindly shows "success" — it reads evidence records and shows real pass/fail counts with diagnostic output.
-
-### Theme System
-
-All dashboard colors, typography, and spacing are centralized in `dashboard/theme.py`. Custom HTML elements use dark-mode-native colors (translucent surfaces, light text). Streamlit's native theming handles standard elements. This avoids the "white block on dark background" problem.
-
-## Audit Reports
-
-After a run completes, export a self-contained audit bundle:
-
-```bash
-python -m engine.report --run-id <id> [--out path] [--project-dir dir]
-```
-
-This produces a `.tar.gz` containing the trace, config snapshot, evidence,
-decisions, a rebuilt artifact manifest, and an integrity check result.
-
-The flow will appear in the Prefect UI at `http://localhost:4200`. If a decision gate triggers with `pause` policy, resume from the UI.
-
-After a successful run, the final project files are extracted to a sibling directory:
-
-```
-~/Desktop/
-├── autonomy_engine/      # engine root
-└── my-project/           # extracted project (slugified name from spec)
-    ├── app.py
-    ├── requirements.txt
-    ├── models/
-    │   └── ...
-    └── ...
-```
-
-A manifest of all extracted files is saved to `state/build/MANIFEST.md`.
-
 ## Setup
 
 ```bash
@@ -243,50 +298,38 @@ pip install -e ".[dev]"
    ```bash
    cp .env.example .env
    ```
-2. Fill in your API keys in `.env`
-3. Enable the pre-commit hook:
+2. Add your API keys to `.env` (Claude and/or OpenAI)
+3. Enable the pre-commit hook (prevents accidental key commits):
    ```bash
    git config core.hooksPath .githooks
    ```
 
-**Security:** The `.env` file is gitignored. The pre-commit hook will reject any attempt to commit files containing API keys. Never share `.env` — use `.env.example` as the template.
+**Security:** The `.env` file is excluded from version control. The pre-commit hook rejects any commit containing API key patterns. Never share `.env` — use `.env.example` as the template.
 
 ## Usage
 
 ### Step 1: Intake (required)
 
-Interactive (engine root — default):
+Describe what you want to build — interactively or from a YAML file:
+
 ```bash
+# Interactive intake (guided prompts)
 python -m intake.intake new-project
-```
 
-Interactive (external project directory):
-```bash
-python -m intake.intake --project-dir ~/projects/solo1 new-project
-```
-
-This scaffolds the project directory with a copy of `config.yml`, `templates/`, and
-the `state/` folder structure, then runs the interactive intake. Edit the copied
-templates to customize prompts per-project.
-
-Or from a YAML file:
-```bash
+# From an existing spec file
 python -m intake.intake from-file path/to/project_spec.yml
-python -m intake.intake --project-dir ~/projects/solo1 from-file path/to/project_spec.yml
-```
 
-Edit an existing spec:
-```bash
+# Using a separate project directory
+python -m intake.intake --project-dir ~/projects/solo1 new-project
+
+# Edit an existing spec
 python -m intake.intake edit
-python -m intake.intake --project-dir ~/projects/solo1 edit
-```
 
-Validate only:
-```bash
+# Validate a spec without running the pipeline
 python -m intake.intake validate path/to/project_spec.yml
 ```
 
-Or use the **Create Project** page in the dashboard for a form-based intake with auto-saving fields, project loading, and one-click pipeline launch.
+Or use the **Create Project** page in the dashboard for a form-based experience with auto-saving fields and one-click pipeline launch.
 
 ### Step 2: Run the engine
 
@@ -294,40 +337,41 @@ Or use the **Create Project** page in the dashboard for a form-based intake with
 # Start Prefect server (separate terminal)
 prefect server start
 
-# Run the flow (engine root)
+# Run the pipeline
 python flows/autonomous_flow.py
 
-# Run the flow against an external project
+# Run against an external project directory
 python flows/autonomous_flow.py --project-dir ~/projects/solo1
 ```
 
-The engine will refuse to start if intake has not been completed.
+The engine will refuse to start if intake has not been completed. The Prefect UI is available at `http://localhost:4200` for monitoring and gate approvals.
 
 Or use the **Run Pipeline** page in the dashboard for tier selection, cost estimates, and live monitoring.
 
-### Project directory layout
+### Output
 
-When using `--project-dir`, the scaffolded directory looks like:
+After a successful run, the generated project files appear in a sibling directory:
 
 ```
-~/projects/solo1/
-  config.yml              # Copied from engine — edit to customize
-  templates/              # Copied from engine — edit to customize
-    DECISION_GATES.yml
-    prompts/
-      design.txt, implement.txt, implement_chunk.txt, verify.txt
-  state/
-    runs/<run_id>/trace.jsonl
-    inputs/ designs/ implementations/ tests/ decisions/ build/
-    cache/llm/            # LLM response cache
-    sandbox_cache/        # Venv + pip cache
+~/Desktop/
+├── autonomy_engine/      # this engine
+└── my-project/           # the generated project
+    ├── app.py
+    ├── requirements.txt
+    ├── models/
+    │   └── ...
+    └── ...
 ```
 
-Without `--project-dir`, all state and config lives in the engine root.
+A manifest of all extracted files is saved to `state/build/MANIFEST.md`.
+
+---
 
 ## Configuration
 
-### config.yml — Runtime settings
+### config.yml — Runtime Settings
+
+Controls how the engine runs (which AI model, token budgets, gate behavior, sandbox settings):
 
 ```yaml
 llm:
@@ -343,10 +387,10 @@ llm:
     verify: "claude-sonnet-4-20250514"
 
 notifications:
-  enabled: false           # log-only; replace engine/notifier.py for real alerts
+  enabled: false           # log-only; replace engine/notifier.py for Slack/email
 
 sandbox:
-  enabled: true            # isolate test execution in temp workspace
+  enabled: true            # run tests in isolated workspace (see Security Model)
   install_deps: true
 
 verify:
@@ -357,41 +401,45 @@ verify:
 checks: []                 # approved test commands (see config.yml for examples)
 ```
 
-### DECISION_GATES.yml — Gate policies
+### DECISION_GATES.yml — Gate Policies
+
+Controls what happens at each decision point:
 
 ```yaml
 gates:
   design:
-    policy: "pause"        # pause | auto | skip
+    policy: "pause"        # stop for human approval
   test:
-    policy: "skip"
+    policy: "skip"         # auto-continue
     default_option: "continue"
   verify:
-    policy: "skip"
+    policy: "skip"         # auto-continue
     default_option: "accept"
 ```
+
+---
 
 ## Efficiency Features
 
 ### Per-Stage Model Selection
 
-Each pipeline stage can use a different LLM model. Configure via `config.yml` under `llm.models`. If a stage key is missing, falls back to `llm.<provider>.model`.
+Each pipeline stage can use a different AI model. Use a cheaper/faster model for verification and a more capable one for implementation. Configure in `config.yml` under `llm.models`.
 
-### LLM Response Caching
+### AI Response Caching
 
-Deterministic cache under `state/cache/llm/`. Cache key is derived from stage, prompt template hash, input content hash, model name, and generation parameters. If inputs haven't changed, the cached response is reused without an API call. Cache artifacts are immutable (first write wins, never overwritten).
+Responses are cached based on the exact inputs (prompt, model, parameters). If you re-run the pipeline without changing inputs, cached responses are reused — no additional API cost. Cache entries are immutable (first response wins, never overwritten).
 
 ### Selective Verify
 
-The verify stage supports three modes to avoid unnecessary LLM calls:
+The verification stage supports three modes to balance thoroughness against cost:
 
-- **`always_llm`** — always call the LLM (default)
-- **`auto`** — skip LLM when evidence makes outcome obvious (controlled by `llm_on_pass_summary` and `llm_on_fail_summary` flags)
-- **`never_llm`** — always write a deterministic VERIFICATION.md with structural issue breakdown
+- **`always_llm`** — always use the AI for verification analysis (default)
+- **`auto`** — skip the AI when test results make the outcome obvious (all passed or all failed)
+- **`never_llm`** — purely rule-based verification with structured issue breakdown (zero AI cost)
 
-### Sandbox Venv Caching
+### Sandbox Caching
 
-Virtualenvs created for test sandbox execution are cached under `state/sandbox_cache/venvs/`, keyed on dependency spec + Python version + sandbox config. Subsequent runs with the same dependencies reuse the cached venv. A shared pip cache (`state/sandbox_cache/pip/`) further speeds up dependency installation.
+Test environments (Python virtualenvs) are cached and reused across runs when dependencies haven't changed. A shared package cache further speeds up setup.
 
 ### Benchmarking
 
@@ -402,63 +450,66 @@ python bench/compare_results.py bench/results_old.json bench/results_new.json
 
 See `bench/README.md` for full documentation.
 
+---
+
 ## Project Structure
 
 ```
-intake/             Project intake CLI and Pydantic schema
-  schema.py         ProjectSpec definition (what to build)
-  renderer.py       Generates engine artifacts from validated spec
-  intake.py         CLI entry point (new-project, from-file, edit, validate)
+intake/               Project intake — how you describe what to build
+  schema.py           Project spec definition and validation
+  renderer.py         Generates structured artifacts from the validated spec
+  intake.py           CLI entry point (new-project, from-file, edit, validate)
 
-engine/             Core modules
-  context.py        Singleton path context — resolves project vs engine root paths
-  decision_gates.py Gate policies (pause/auto/skip) from DECISION_GATES.yml
-  llm_provider.py   Claude + OpenAI behind a unified interface
-  tracer.py         Hash-chained trace entries (trace.jsonl)
-  evidence.py       Auto-detect checks, structured execution, evidence capture
-  report.py         Audit bundle exporter (tar.gz with trace, evidence, integrity)
-  notifier.py       Notification via logging (replace for Slack/email/PagerDuty)
+engine/               Core engine modules
+  context.py          Path resolution — figures out where project files live
+  decision_gates.py   Gate policies (pause/auto/skip) loaded from config
+  llm_provider.py     AI model interface — Claude and OpenAI behind one API
+  tracer.py           Tamper-evident audit log (HMAC-SHA256 hash chain)
+  evidence.py         Test runner — auto-detects checks, captures structured results
+  report.py           Audit bundle exporter (compressed archive with full run data)
+  notifier.py         Notification stub (swap in Slack/email/PagerDuty)
   design_contract.py  Design contract schema, validation (15+ checks), extraction
-  contract_checker.py Post-extraction compliance validation against design contract
-  spec_normalizer.py  Normalize user input, detect ambiguity, structure for design
-  tier_context.py     Tier-aware scope guidance injected into LLM prompts
-  cost_estimator.py   Heuristic token/cost estimation for tier selection
-  cache.py            Deterministic LLM response caching
+  contract_checker.py Post-build compliance check — did the AI follow the contract?
+  spec_normalizer.py  Normalizes user input, flags ambiguity, structures for design
+  tier_context.py     Injects tier-appropriate scope guidance into AI prompts
+  cost_estimator.py   Pre-run token and cost estimation for tier selection
+  usage_tracker.py    Post-run actual vs. projected token usage comparison
+  cache.py            Deterministic AI response caching
 
-flows/              Prefect flow definition — the entry point
-tasks/              Individual pipeline stages as Prefect tasks
-  bootstrap.py      Input validation, trace initialization
-  design.py         Architecture + design contract generation
-  implement.py      Contract-driven chunked implementation with canonical schemas
-  extract.py        Code extraction with circuit breaker
-  test.py           Auto-detect checks + contract compliance
-  verify.py         Structural issue classification + LLM/deterministic verification
+flows/                Prefect flow definition — the main pipeline entry point
+tasks/                Individual pipeline stages (one file per stage)
+  bootstrap.py        Input validation and audit log initialization
+  design.py           Architecture and design contract generation (AI-powered)
+  implement.py        Contract-driven code generation, chunk by chunk (AI-powered)
+  extract.py          Code extraction with safety limits (no AI — pure parsing)
+  test.py             Automated quality checks + contract compliance
+  verify.py           Go/no-go analysis — AI-powered or rule-based
 
-templates/          Gate policies and LLM prompt templates
-  prompts/          LLM prompt files (tracked by SHA-256 hash in trace)
-    design.txt      Design prompt with contract JSON requirements
-    implement.txt   Single-call implementation prompt
-    implement_chunk.txt  Per-chunk prompt with canonical schema injection
-    verify.txt      Verification prompt with structural analysis
+templates/            Gate policies and AI prompt templates
+  prompts/            The actual prompts sent to the AI (tracked by hash in audit log)
+    design.txt        Architecture prompt — includes contract JSON requirements
+    implement.txt     Single-call implementation prompt
+    implement_chunk.txt  Per-chunk prompt with canonical type injection
+    verify.txt        Verification prompt with structural analysis format
 
-dashboard/          Streamlit web dashboard
-  app.py            Entry point, sidebar navigation, page routing
-  theme.py          Centralized dark-mode colors, typography, CSS, helper functions
-  data_loader.py    Filesystem-based data loading (no engine imports)
-  pipeline_runner.py  Subprocess launcher for pipeline execution
-  pages/            Page modules (home, create_project, run_pipeline, etc.)
-  components/       Reusable UI components (pipeline_visual, trace_timeline, etc.)
+dashboard/            Web dashboard (Streamlit)
+  app.py              Entry point, navigation, page routing
+  theme.py            Centralized dark-mode styling
+  data_loader.py      Reads pipeline data from disk (no engine imports)
+  pipeline_runner.py  Launches pipeline as a subprocess
+  pages/              Page modules (home, create_project, run_pipeline, etc.)
+  components/         Reusable UI components (pipeline visual, trace timeline, etc.)
 
-state/              Runtime artifacts (gitignored except .gitkeep)
-  runs/<id>/        Per-run trace, evidence, and decisions
-  inputs/           Intake-generated artifacts (project_spec.yml + rendered markdown)
-  designs/          Architecture documents + DESIGN_CONTRACT.json
-  implementations/  Generated code
-  tests/            Test and verification results
-  build/            Extraction manifest (MANIFEST.md)
-  cache/llm/        LLM response cache
-  sandbox_cache/    Venv + pip cache for test sandbox
+state/                Runtime artifacts (excluded from version control)
+  runs/<id>/          Per-run audit log, evidence records, and decisions
+  inputs/             Project spec and rendered intake artifacts
+  designs/            Architecture documents + design contract
+  implementations/    AI-generated code
+  tests/              Test and verification results
+  build/              Extraction manifest
+  cache/llm/          Cached AI responses
+  sandbox_cache/      Cached test environments
 
-tests/              Pytest test suite (259 tests)
-bench/              Benchmark runner and comparison tools
+tests/                Automated test suite (265+ tests)
+bench/                Performance benchmarking tools
 ```

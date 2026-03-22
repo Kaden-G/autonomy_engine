@@ -41,6 +41,14 @@ verify:
   llm_on_fail_summary: true
   llm_on_pass_summary: true
 
+# Cache eviction — stale entries are cleaned at the start of each run.
+# LLM response cache: entries older than llm_ttl_days are deleted.
+# Venv cache: cached virtualenvs older than venv_ttl_days are deleted.
+# Set to 0 to disable eviction for that cache type.
+cache:
+  llm_ttl_days: 30
+  venv_ttl_days: 7
+
 # Approved commands for the test stage.
 # Only commands listed here will be executed — the LLM cannot invent its own.
 # Each entry needs: name (identifier) and command (shell command).

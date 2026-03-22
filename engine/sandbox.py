@@ -309,6 +309,51 @@ def _save_venv_to_cache(cache_key: str, venv_path: Path) -> None:
         pass
 
 
+# Default TTL for cached venvs (in days).
+# Override via config.yml: cache.venv_ttl_days
+DEFAULT_VENV_CACHE_TTL_DAYS = 7
+
+
+def evict_stale_venv_cache(ttl_days: int = DEFAULT_VENV_CACHE_TTL_DAYS) -> int:
+    """Delete cached venvs older than *ttl_days*.
+
+    Uses filesystem mtime as the age indicator — when a cached venv is
+    copied out by ``_try_reuse_venv``, the destination gets a fresh
+    mtime, but the source in the cache dir retains its original mtime.
+    This means unused venvs age out naturally, while actively reused
+    ones stay until their deps spec changes (which generates a new
+    cache key anyway).
+
+    Returns the number of venv directories deleted.
+    """
+    cache_dir = _get_venv_cache_dir()
+    if not cache_dir.exists():
+        return 0
+
+    now = _time.time()
+    ttl_seconds = ttl_days * 86400
+    deleted = 0
+
+    for entry in cache_dir.iterdir():
+        if not entry.is_dir():
+            continue
+        try:
+            age = now - entry.stat().st_mtime
+            if age > ttl_seconds:
+                shutil.rmtree(entry, ignore_errors=True)
+                deleted += 1
+        except OSError:
+            pass  # Best-effort — skip entries we can't stat or delete
+
+    if deleted:
+        logger.info(
+            "Venv cache eviction: removed %d cached venvs older than %d days",
+            deleted,
+            ttl_days,
+        )
+    return deleted
+
+
 # ── Context manager ──────────────────────────────────────────────────────────
 
 

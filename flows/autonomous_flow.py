@@ -9,6 +9,7 @@ load_dotenv()
 
 from prefect import flow
 
+from engine.cache import evict_stale_llm_cache
 from engine.context import get_state_dir, init as init_context
 from engine.decision_gates import (
     DecisionRequired,
@@ -17,6 +18,7 @@ from engine.decision_gates import (
     save_decision,
 )
 from engine.notifier import notify
+from engine.sandbox import evict_stale_venv_cache
 from engine.tracer import init_run
 from tasks.bootstrap import bootstrap_project
 from tasks.design import design_system
@@ -62,6 +64,25 @@ def autonomous_build(project_dir: str | None = None) -> None:
     # Must happen before any task that calls trace().
     run_id = init_run()
     logger.info("Run %s started.", run_id)
+
+    # Lazy cache eviction — clean up stale entries at the start of each run.
+    # Runs are infrequent (minutes–hours apart), so the overhead is negligible.
+    # TTLs are configurable via config.yml → cache section.
+    import yaml
+
+    cache_cfg = {}
+    config_path = get_state_dir().parent / "config.yml"
+    if config_path.exists():
+        with open(config_path) as f:
+            full_cfg = yaml.safe_load(f) or {}
+        cache_cfg = full_cfg.get("cache") or {}
+
+    llm_ttl = cache_cfg.get("llm_ttl_days", 30)
+    venv_ttl = cache_cfg.get("venv_ttl_days", 7)
+    if llm_ttl > 0:
+        evict_stale_llm_cache(ttl_days=llm_ttl)
+    if venv_ttl > 0:
+        evict_stale_venv_cache(ttl_days=venv_ttl)
 
     # Step 1: Bootstrap — verify inputs and scaffold directories
     logger.info("Starting bootstrap...")

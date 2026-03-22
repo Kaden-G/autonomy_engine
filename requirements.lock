@@ -1,0 +1,363 @@
+aiosqlite==0.22.1
+    # via prefect
+alembic==1.18.4
+    # via prefect
+amplitude-analytics==1.2.2
+    # via prefect
+annotated-doc==0.0.4
+    # via
+    #   fastapi
+    #   typer
+annotated-types==0.7.0
+    # via pydantic
+anthropic==0.86.0
+    # via autonomy-engine (pyproject.toml)
+anyio==4.12.1
+    # via
+    #   anthropic
+    #   httpx
+    #   openai
+    #   prefect
+    #   starlette
+apprise==1.9.9
+    # via prefect
+asgi-lifespan==2.1.0
+    # via prefect
+async-timeout==5.0.1
+    # via
+    #   asyncpg
+    #   redis
+asyncpg==0.31.0
+    # via prefect
+attrs==26.1.0
+    # via
+    #   cyclopts
+    #   jsonschema
+    #   referencing
+beartype==0.22.9
+    # via py-key-value-aio
+cachetools==7.0.5
+    # via
+    #   prefect
+    #   py-key-value-aio
+certifi==2026.2.25
+    # via
+    #   apprise
+    #   httpcore
+    #   httpx
+    #   requests
+cffi==2.0.0
+    # via cryptography
+charset-normalizer==3.4.6
+    # via requests
+click==8.3.1
+    # via
+    #   apprise
+    #   prefect
+    #   typer
+    #   uvicorn
+cloudpickle==3.1.2
+    # via
+    #   prefect
+    #   pydocket
+colorama==0.4.6
+    # via griffecli
+coolname==4.1.0
+    # via prefect
+cronsim==2.7
+    # via pydocket
+cryptography==46.0.5
+    # via prefect
+cyclopts==4.10.0
+    # via prefect
+dateparser==1.3.0
+    # via prefect
+distro==1.9.0
+    # via
+    #   anthropic
+    #   openai
+docker==7.1.0
+    # via prefect
+docstring-parser==0.17.0
+    # via
+    #   anthropic
+    #   cyclopts
+docutils==0.22.4
+    # via rich-rst
+exceptiongroup==1.3.1
+    # via
+    #   anyio
+    #   prefect
+    #   pydocket
+    #   taskgroup
+fakeredis==2.34.1
+    # via pydocket
+fastapi==0.135.1
+    # via prefect
+fsspec==2026.2.0
+    # via prefect
+graphviz==0.21
+    # via prefect
+greenlet==3.3.2
+    # via sqlalchemy
+griffe==2.0.0
+    # via prefect
+griffecli==2.0.0
+    # via griffe
+griffelib==2.0.0
+    # via
+    #   griffe
+    #   griffecli
+h11==0.16.0
+    # via
+    #   httpcore
+    #   uvicorn
+h2==4.3.0
+    # via httpx
+hpack==4.1.0
+    # via h2
+httpcore==1.0.9
+    # via
+    #   httpx
+    #   prefect
+httpx==0.28.1
+    # via
+    #   anthropic
+    #   openai
+    #   prefect
+humanize==4.15.0
+    # via
+    #   jinja2-humanize-extension
+    #   prefect
+hyperframe==6.1.0
+    # via h2
+idna==3.11
+    # via
+    #   anyio
+    #   httpx
+    #   requests
+importlib-metadata==8.7.1
+    # via opentelemetry-api
+jinja2==3.1.6
+    # via
+    #   jinja2-humanize-extension
+    #   prefect
+jinja2-humanize-extension==0.4.0
+    # via prefect
+jiter==0.13.0
+    # via
+    #   anthropic
+    #   openai
+jsonpatch==1.33
+    # via prefect
+jsonpointer==3.1.0
+    # via jsonpatch
+jsonschema==4.26.0
+    # via prefect
+jsonschema-specifications==2025.9.1
+    # via jsonschema
+lupa==2.6
+    # via fakeredis
+mako==1.3.10
+    # via alembic
+markdown==3.10.2
+    # via apprise
+markdown-it-py==4.0.0
+    # via rich
+markupsafe==3.0.3
+    # via
+    #   jinja2
+    #   mako
+mdurl==0.1.2
+    # via markdown-it-py
+oauthlib==3.3.1
+    # via requests-oauthlib
+openai==2.29.0
+    # via autonomy-engine (pyproject.toml)
+opentelemetry-api==1.40.0
+    # via
+    #   prefect
+    #   pydocket
+orjson==3.11.7
+    # via prefect
+packaging==26.0
+    # via prefect
+pathspec==1.0.4
+    # via prefect
+pendulum==3.2.0
+    # via prefect
+pluggy==1.6.0
+    # via prefect
+prefect==3.6.23
+    # via autonomy-engine (pyproject.toml)
+prometheus-client==0.24.1
+    # via
+    #   prefect
+    #   pydocket
+py-key-value-aio==0.4.4
+    # via pydocket
+pycparser==3.0
+    # via cffi
+pydantic==2.12.5
+    # via
+    #   anthropic
+    #   autonomy-engine (pyproject.toml)
+    #   fastapi
+    #   openai
+    #   prefect
+    #   pydantic-extra-types
+    #   pydantic-settings
+pydantic-core==2.41.5
+    # via
+    #   prefect
+    #   pydantic
+pydantic-extra-types==2.11.1
+    # via prefect
+pydantic-settings==2.13.1
+    # via prefect
+pydocket==0.18.2
+    # via prefect
+pygments==2.19.2
+    # via rich
+python-dateutil==2.9.0.post0
+    # via
+    #   dateparser
+    #   pendulum
+    #   prefect
+python-dotenv==1.2.2
+    # via
+    #   autonomy-engine (pyproject.toml)
+    #   pydantic-settings
+python-json-logger==4.0.0
+    # via pydocket
+python-slugify==8.0.4
+    # via prefect
+pytz==2026.1.post1
+    # via
+    #   dateparser
+    #   prefect
+pyyaml==6.0.3
+    # via
+    #   apprise
+    #   autonomy-engine (pyproject.toml)
+    #   prefect
+readchar==4.2.1
+    # via prefect
+redis==7.3.0
+    # via
+    #   fakeredis
+    #   py-key-value-aio
+    #   pydocket
+referencing==0.37.0
+    # via
+    #   jsonschema
+    #   jsonschema-specifications
+regex==2026.2.28
+    # via dateparser
+requests==2.32.5
+    # via
+    #   apprise
+    #   docker
+    #   requests-oauthlib
+requests-oauthlib==2.0.0
+    # via apprise
+rfc3339-validator==0.1.4
+    # via prefect
+rich==14.3.3
+    # via
+    #   cyclopts
+    #   prefect
+    #   pydocket
+    #   rich-rst
+    #   typer
+rich-rst==1.3.2
+    # via cyclopts
+rpds-py==0.30.0
+    # via
+    #   jsonschema
+    #   referencing
+ruamel-yaml==0.19.1
+    # via prefect
+ruamel-yaml-clib==0.2.15
+    # via prefect
+semver==3.0.4
+    # via prefect
+shellingham==1.5.4
+    # via typer
+six==1.17.0
+    # via
+    #   python-dateutil
+    #   rfc3339-validator
+sniffio==1.3.1
+    # via
+    #   anthropic
+    #   asgi-lifespan
+    #   openai
+    #   prefect
+sortedcontainers==2.4.0
+    # via fakeredis
+sqlalchemy==2.0.48
+    # via
+    #   alembic
+    #   prefect
+starlette==1.0.0
+    # via fastapi
+taskgroup==0.2.2
+    # via pydocket
+text-unidecode==1.3
+    # via python-slugify
+toml==0.10.2
+    # via prefect
+tomli==2.4.0
+    # via
+    #   alembic
+    #   cyclopts
+tqdm==4.67.3
+    # via openai
+typer==0.24.1
+    # via pydocket
+typing-extensions==4.15.0
+    # via
+    #   alembic
+    #   anthropic
+    #   anyio
+    #   cryptography
+    #   cyclopts
+    #   exceptiongroup
+    #   fakeredis
+    #   fastapi
+    #   openai
+    #   opentelemetry-api
+    #   prefect
+    #   py-key-value-aio
+    #   pydantic
+    #   pydantic-core
+    #   pydantic-extra-types
+    #   pydocket
+    #   referencing
+    #   sqlalchemy
+    #   starlette
+    #   taskgroup
+    #   typing-inspection
+    #   uvicorn
+typing-inspection==0.4.2
+    # via
+    #   fastapi
+    #   pydantic
+    #   pydantic-settings
+tzdata==2025.3
+    # via pendulum
+tzlocal==5.3.1
+    # via dateparser
+uncalled-for==0.2.0
+    # via pydocket
+urllib3==2.6.3
+    # via
+    #   docker
+    #   requests
+uvicorn==0.42.0
+    # via prefect
+websockets==16.0
+    # via prefect
+zipp==3.23.0
+    # via importlib-metadata

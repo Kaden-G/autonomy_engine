@@ -47,9 +47,7 @@ def _make_project(tmp_path, files: dict[str, str] | None = None) -> Path:
 def _npm_available() -> bool:
     """Check if npm is available on the system."""
     try:
-        result = subprocess.run(
-            ["npm", "--version"], capture_output=True, text=True, timeout=10
-        )
+        result = subprocess.run(["npm", "--version"], capture_output=True, text=True, timeout=10)
         return result.returncode == 0
     except (FileNotFoundError, subprocess.SubprocessError):
         return False

@@ -222,11 +222,13 @@ def test_system() -> None:
     evidence_rel = [f"runs/{run_id}/evidence/{r['name']}.json" for r in evidence]
     extra = {}
     if sandbox_meta:
-        extra.update({
-            "sandbox_venv_cache_hit": sandbox_meta.get("venv_cache_hit"),
-            "sandbox_venv_create_time_s": sandbox_meta.get("venv_create_time_s"),
-            "sandbox_deps_install_time_s": sandbox_meta.get("deps_install_time_s"),
-        })
+        extra.update(
+            {
+                "sandbox_venv_cache_hit": sandbox_meta.get("venv_cache_hit"),
+                "sandbox_venv_create_time_s": sandbox_meta.get("venv_create_time_s"),
+                "sandbox_deps_install_time_s": sandbox_meta.get("deps_install_time_s"),
+            }
+        )
     if auto_detected:
         extra["checks_auto_detected"] = True
         extra["auto_detected_checks"] = [c["name"] for c in checks]

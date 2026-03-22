@@ -37,12 +37,11 @@ def _verify_intake() -> None:
     state_dir = get_state_dir()
     missing = [f for f in REQUIRED_INPUTS if not (state_dir / f).exists()]
     if missing:
-        raise RuntimeError(
-            "Intake has not been completed. Missing: " + ", ".join(missing)
-        )
+        raise RuntimeError("Intake has not been completed. Missing: " + ", ".join(missing))
 
 
 # ── Prefect-free gate handler ────────────────────────────────────────────────
+
 
 def _handle_gate(task_fn, stage: str) -> None:
     """Run a @task-decorated function via .fn(), applying auto/skip on gates."""
@@ -54,7 +53,9 @@ def _handle_gate(task_fn, stage: str) -> None:
         policy = get_gate_policy(stage)
         logger.info(
             "DecisionRequired at %s (gate=%s), policy=%s",
-            stage, exc.gate, policy.policy,
+            stage,
+            exc.gate,
+            policy.policy,
         )
 
         if policy.policy == "skip":
@@ -83,6 +84,7 @@ def _handle_gate(task_fn, stage: str) -> None:
 
 # ── Main pipeline ────────────────────────────────────────────────────────────
 
+
 def run_pipeline(
     project_dir: str,
     skip_estimate: bool = False,
@@ -96,7 +98,10 @@ def run_pipeline(
     is False) the user is prompted interactively on stdin.
     """
     from engine.cost_estimator import (
-        TierName, build_tiers, estimate_run, prompt_tier_selection,
+        TierName,
+        build_tiers,
+        estimate_run,
+        prompt_tier_selection,
     )
     from engine.llm_provider import set_stage_token_overrides
     from engine.notifier import notify
@@ -126,11 +131,13 @@ def run_pipeline(
         set_stage_token_overrides(tier.max_tokens_per_stage)
 
         from engine.tier_context import set_tier
+
         set_tier(tier.name.value)
 
         logger.info(
             "Tier '%s' selected — estimated cost $%.4f",
-            tier.name.value, tier.estimated_cost_usd,
+            tier.name.value,
+            tier.estimated_cost_usd,
         )
 
     run_id = init_run()
@@ -157,6 +164,7 @@ def run_pipeline(
     # ── Generate usage report (actual vs projected) ──────────────────
     try:
         from engine.usage_tracker import build_usage_report, save_usage_report
+
         usage_report = build_usage_report(
             run_id,
             estimate=estimate if not skip_estimate else None,
@@ -175,11 +183,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run pipeline without Prefect")
     parser.add_argument("--project-dir", required=True)
     parser.add_argument(
-        "--tier", choices=["premium", "mvp"], default=None,
+        "--tier",
+        choices=["premium", "mvp"],
+        default=None,
         help="Select build tier (premium or mvp). Skips interactive prompt.",
     )
     parser.add_argument(
-        "--skip-estimate", action="store_true",
+        "--skip-estimate",
+        action="store_true",
         help="Skip cost estimate and tier selection entirely (use config defaults)",
     )
     args = parser.parse_args()

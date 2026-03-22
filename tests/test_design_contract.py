@@ -19,6 +19,7 @@ from engine.design_contract import (
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
+
 def _minimal_contract(**overrides) -> DesignContract:
     """Build a minimal valid contract with optional overrides."""
     defaults = dict(
@@ -66,6 +67,7 @@ def _wrap_in_markers(json_str: str) -> str:
 
 # ── Serialization ────────────────────────────────────────────────────────────
 
+
 class TestSerialization:
     def test_roundtrip(self):
         c = _minimal_contract()
@@ -89,17 +91,21 @@ class TestSerialization:
         raw = {
             "project_name": "test",
             "language": "python",
-            "components": [{
-                "name": "Main",
-                "description": "The main module",
-                "files": ["main.py"],
-            }],
-            "canonical_types": [{
-                "name": "Item",
-                "kind": "dataclass",
-                "fields": {"id": "str"},
-                "file_path": "types.py",
-            }],
+            "components": [
+                {
+                    "name": "Main",
+                    "description": "The main module",
+                    "files": ["main.py"],
+                }
+            ],
+            "canonical_types": [
+                {
+                    "name": "Item",
+                    "kind": "dataclass",
+                    "fields": {"id": "str"},
+                    "file_path": "types.py",
+                }
+            ],
         }
         c = DesignContract.from_dict(raw)
         assert c.entry_point == ""
@@ -109,6 +115,7 @@ class TestSerialization:
 
 
 # ── Validation ───────────────────────────────────────────────────────────────
+
 
 class TestValidation:
     def test_valid_contract_passes(self):
@@ -145,9 +152,12 @@ class TestValidation:
 
     def test_component_exceeds_max_files(self):
         comp = ComponentContract(
-            "Big", "desc",
+            "Big",
+            "desc",
             ["a.ts", "b.ts", "c.ts"],
-            [], [], max_files=2,
+            [],
+            [],
+            max_files=2,
         )
         c = _minimal_contract(components=[comp])
         errors = validate_contract(c)
@@ -168,9 +178,12 @@ class TestValidation:
 
     def test_total_file_budget_exceeded(self):
         comp = ComponentContract(
-            "Huge", "desc",
+            "Huge",
+            "desc",
             [f"file{i}.ts" for i in range(50)],
-            [], [], max_files=50,
+            [],
+            [],
+            max_files=50,
         )
         c = _minimal_contract(components=[comp], total_file_budget=10)
         errors = validate_contract(c)
@@ -198,6 +211,7 @@ class TestValidation:
 
 
 # ── Extraction ───────────────────────────────────────────────────────────────
+
 
 class TestExtraction:
     def test_extracts_from_markers(self):

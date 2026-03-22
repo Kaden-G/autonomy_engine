@@ -42,8 +42,12 @@ _CHUNK_THRESHOLD = 0.85
 # subsequent chunks so they can import instead of reinventing.
 
 _CONTRACT_EXTENSIONS = {
-    ".ts", ".tsx", ".js", ".jsx",   # TypeScript / JavaScript
-    ".py", ".pyi",                   # Python
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",  # TypeScript / JavaScript
+    ".py",
+    ".pyi",  # Python
 }
 
 # Max characters of contract text per file — keeps the prompt bounded.
@@ -190,10 +194,10 @@ def _extract_canonical_schema(architecture: str) -> str:
         return ""
 
     # Find the next H2 heading after the schema section to delimit the end
-    rest = architecture[idx + len(_CANONICAL_SCHEMA_HEADER):]
+    rest = architecture[idx + len(_CANONICAL_SCHEMA_HEADER) :]
     next_h2 = re.search(r"^## ", rest, re.MULTILINE)
     if next_h2:
-        schema_text = rest[:next_h2.start()].strip()
+        schema_text = rest[: next_h2.start()].strip()
     else:
         schema_text = rest.strip()
 
@@ -232,14 +236,15 @@ Rules:
 
 # ── JSON / manifest helpers ──────────────────────────────────────────────────
 
+
 def _extract_json(raw: str) -> str:
     """Strip optional ```json fences and validate JSON syntax."""
     raw = raw.strip()
     if raw.startswith("```"):
         first_newline = raw.index("\n")
-        raw = raw[first_newline + 1:]
+        raw = raw[first_newline + 1 :]
     if raw.endswith("```"):
-        raw = raw[:raw.rfind("```")].rstrip()
+        raw = raw[: raw.rfind("```")].rstrip()
     try:
         json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -257,7 +262,7 @@ def _split_response(response: str) -> tuple[str | None, str | None]:
 
     if start != -1 and end != -1 and end > start:
         markdown = response[:start].rstrip()
-        raw_json = response[start + len(_MANIFEST_START):end].strip()
+        raw_json = response[start + len(_MANIFEST_START) : end].strip()
         return markdown, _extract_json(raw_json)
 
     # Fallback: find a JSON code block with a "files" array
@@ -265,7 +270,7 @@ def _split_response(response: str) -> tuple[str | None, str | None]:
     match = re.search(pattern, response)
     if match:
         raw_json = match.group(1)
-        markdown = response[:match.start()].rstrip()
+        markdown = response[: match.start()].rstrip()
         return markdown, _extract_json(raw_json)
 
     return None, None
@@ -296,16 +301,17 @@ def _recover_manifest(provider, response: str) -> str:
     )
     logger.info(
         "Recovery provider: %d tokens (vs chunk budget of %d)",
-        recovery_provider.max_tokens, provider.max_tokens,
+        recovery_provider.max_tokens,
+        provider.max_tokens,
     )
     manifest_response = recovery_provider.generate(recovery_prompt)
 
     raw = manifest_response.strip()
     if raw.startswith("```"):
         first_newline = raw.index("\n")
-        raw = raw[first_newline + 1:]
+        raw = raw[first_newline + 1 :]
     if raw.endswith("```"):
-        raw = raw[:raw.rfind("```")].rstrip()
+        raw = raw[: raw.rfind("```")].rstrip()
 
     try:
         parsed = json.loads(raw)
@@ -366,7 +372,10 @@ def _merge_manifests(
             logger.warning(
                 "Manifest conflict: '%s' produced by %d chunks %s — "
                 "keeping version from '%s' (last-writer-wins).",
-                path, len(owners), owners, owners[-1],
+                path,
+                len(owners),
+                owners,
+                owners[-1],
             )
 
     if conflicts:
@@ -384,6 +393,7 @@ def _merge_manifests(
 
 # ── Chunked implementation ───────────────────────────────────────────────────
 
+
 def _plan_components(provider, architecture: str) -> list[dict]:
     """Ask the LLM to split the architecture into implementable chunks.
 
@@ -399,9 +409,9 @@ def _plan_components(provider, architecture: str) -> list[dict]:
     raw = response.strip()
     if raw.startswith("```"):
         first_newline = raw.index("\n")
-        raw = raw[first_newline + 1:]
+        raw = raw[first_newline + 1 :]
     if raw.endswith("```"):
-        raw = raw[:raw.rfind("```")].rstrip()
+        raw = raw[: raw.rfind("```")].rstrip()
 
     try:
         components = json.loads(raw)
@@ -461,7 +471,9 @@ def _implement_chunk(
     if canonical_schema:
         canonical_schema_str = canonical_schema
     else:
-        canonical_schema_str = "(no canonical schema provided — use your best judgment for type definitions)"
+        canonical_schema_str = (
+            "(no canonical schema provided — use your best judgment for type definitions)"
+        )
 
     prompt = chunk_template.format(
         architecture=architecture,
@@ -481,8 +493,11 @@ def _implement_chunk(
     # correctly invalidate caches.
     template_hash = hash_content(chunk_template)
     envelope_hash = hash_content(
-        architecture + requirements + constraints
-        + component["name"] + component["description"]
+        architecture
+        + requirements
+        + constraints
+        + component["name"]
+        + component["description"]
         + "".join(existing_files)
         + type_contracts
         + canonical_schema
@@ -491,7 +506,10 @@ def _implement_chunk(
     params_h = hash_params(provider.model, provider.max_tokens)
     cache_key = build_cache_key(
         f"implement_chunk_{component['name']}",
-        template_hash, envelope_hash, provider.model, params_h,
+        template_hash,
+        envelope_hash,
+        provider.model,
+        params_h,
     )
 
     cached = cache_lookup(cache_key)
@@ -501,7 +519,8 @@ def _implement_chunk(
     else:
         logger.info(
             "  Generating chunk '%s' (%d token budget)...",
-            component["name"], provider.max_tokens,
+            component["name"],
+            provider.max_tokens,
         )
         response = provider.generate(prompt)
         cache_save(cache_key, response, f"implement_chunk_{component['name']}", provider.model)
@@ -547,19 +566,23 @@ def _should_chunk(
         logger.info(
             "Estimated output (%d tokens) exceeds %.0f%% of budget (%d tokens). "
             "Switching to chunked implementation.",
-            estimated_output, _CHUNK_THRESHOLD * 100, budget,
+            estimated_output,
+            _CHUNK_THRESHOLD * 100,
+            budget,
         )
     else:
         logger.info(
             "Estimated output (%d tokens) fits within budget (%d tokens). "
             "Using single-call implementation.",
-            estimated_output, budget,
+            estimated_output,
+            budget,
         )
 
     return needs_chunking
 
 
 # ── Single-call implementation (original behavior) ──────────────────────────
+
 
 def _implement_single(
     provider,
@@ -612,6 +635,7 @@ def _implement_single(
 
 # ── Main task ───────────────────────────────────────────────────────────────
 
+
 def _load_design_contract() -> DesignContract | None:
     """Try to load the design contract from state.  Returns None if not found."""
     try:
@@ -636,9 +660,7 @@ def _contract_to_components(contract: DesignContract) -> list[dict]:
             if dep:
                 dep_descriptions.append(f"- **{dep.name}**: {dep.description}")
 
-        imports_context = (
-            "\n".join(dep_descriptions) if dep_descriptions else "(none)"
-        )
+        imports_context = "\n".join(dep_descriptions) if dep_descriptions else "(none)"
 
         description = (
             f"{comp.description}\n\n"
@@ -650,17 +672,18 @@ def _contract_to_components(contract: DesignContract) -> list[dict]:
 
         if comp.exports_types:
             description += (
-                f"\n\n**This component defines these canonical types "
-                f"(use exact field names from the schema):** "
-                + ", ".join(comp.exports_types)
+                "\n\n**This component defines these canonical types "
+                "(use exact field names from the schema):** " + ", ".join(comp.exports_types)
             )
 
-        components.append({
-            "name": comp.name,
-            "description": description,
-            "contract_files": comp.files,
-            "max_files": comp.max_files,
-        })
+        components.append(
+            {
+                "name": comp.name,
+                "description": description,
+                "contract_files": comp.files,
+                "max_files": comp.max_files,
+            }
+        )
     return components
 
 
@@ -692,7 +715,7 @@ def _build_canonical_schema_from_contract(contract: DesignContract) -> str:
                 lines.append("}")
                 lines.append("")
             else:
-                lines.append(f"@dataclass")
+                lines.append("@dataclass")
                 lines.append(f"class {td.name}:")
                 for fname, ftype in td.fields.items():
                     lines.append(f"    {fname}: {ftype}")
@@ -732,8 +755,7 @@ def implement_system() -> None:
             components = _contract_to_components(contract)
             canonical_schema = _build_canonical_schema_from_contract(contract)
             logger.info(
-                "Using design contract: %d components, %d canonical types, "
-                "budget %d files.",
+                "Using design contract: %d components, %d canonical types, budget %d files.",
                 len(contract.components),
                 len(contract.canonical_types),
                 contract.total_file_budget,
@@ -743,8 +765,7 @@ def implement_system() -> None:
             components = _plan_components(provider, architecture)
             canonical_schema = _extract_canonical_schema(architecture)
             logger.warning(
-                "No design contract — using LLM-planned components. "
-                "Type consistency may suffer."
+                "No design contract — using LLM-planned components. Type consistency may suffer."
             )
 
         all_markdowns: list[str] = []
@@ -755,15 +776,21 @@ def implement_system() -> None:
         for i, component in enumerate(components):
             logger.info(
                 "Implementing chunk %d/%d: %s",
-                i + 1, len(components), component["name"],
+                i + 1,
+                len(components),
+                component["name"],
             )
 
             # Build the type contracts string from all previous chunks
             type_contracts = "\n\n".join(accumulated_contracts)
 
             md, manifest_json = _implement_chunk(
-                provider, architecture, requirements, constraints,
-                component, all_files,
+                provider,
+                architecture,
+                requirements,
+                constraints,
+                component,
+                all_files,
                 type_contracts=type_contracts,
                 canonical_schema=canonical_schema,
             )
@@ -784,19 +811,22 @@ def implement_system() -> None:
                 if extra_files:
                     logger.warning(
                         "  Chunk '%s' produced %d EXTRA files not in contract: %s",
-                        component["name"], len(extra_files),
+                        component["name"],
+                        len(extra_files),
                         sorted(extra_files),
                     )
                 if missing_files:
                     logger.warning(
                         "  Chunk '%s' is MISSING %d files from contract: %s",
-                        component["name"], len(missing_files),
+                        component["name"],
+                        len(missing_files),
                         sorted(missing_files),
                     )
                 if not extra_files and not missing_files:
                     logger.info(
                         "  Chunk '%s' matches contract exactly (%d files).",
-                        component["name"], len(actual),
+                        component["name"],
+                        len(actual),
                     )
 
             # Extract type contracts from this chunk for subsequent chunks
@@ -805,7 +835,8 @@ def implement_system() -> None:
                 accumulated_contracts.append(chunk_contracts)
                 logger.info(
                     "  Extracted %d chars of type contracts from chunk '%s'.",
-                    len(chunk_contracts), component["name"],
+                    len(chunk_contracts),
+                    component["name"],
                 )
 
         markdown = "\n\n---\n\n".join(all_markdowns)
@@ -821,14 +852,19 @@ def implement_system() -> None:
             "Chunked implementation complete: %d components, %d total files "
             "(%d before dedup), %d duplicate path(s), "
             "%d chars of type contracts accumulated.",
-            len(components), final_file_count, len(all_files),
+            len(components),
+            final_file_count,
+            len(all_files),
             len(merge_conflicts),
             sum(len(c) for c in accumulated_contracts),
         )
     else:
         # ── Single-call implementation ──────────────────────────────
         markdown, manifest_json, cache_key, cache_hit = _implement_single(
-            provider, architecture, requirements, constraints,
+            provider,
+            architecture,
+            requirements,
+            constraints,
         )
         merge_conflicts = []
 

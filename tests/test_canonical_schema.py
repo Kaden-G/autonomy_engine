@@ -1,7 +1,5 @@
 """Tests for canonical type schema extraction from architecture documents."""
 
-import pytest
-
 from tasks.implement import _extract_canonical_schema
 
 

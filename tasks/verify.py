@@ -76,33 +76,47 @@ def _classify_issues(evidence: list[dict]) -> dict:
                 if line.startswith("[ERROR]") or line.startswith("[WARN]"):
                     categories["contract_issues"].append(line)
             if not categories["contract_issues"]:
-                categories["contract_issues"].append(f"Contract compliance check failed (exit {exit_code})")
+                categories["contract_issues"].append(
+                    f"Contract compliance check failed (exit {exit_code})"
+                )
 
         elif name in ("typecheck", "type-check"):
             # Count type errors from output
-            error_lines = [l for l in output.splitlines() if "error TS" in l or ": error:" in l]
+            error_lines = [
+                line for line in output.splitlines() if "error TS" in line or ": error:" in line
+            ]
             if error_lines:
                 categories["type_errors"].extend(error_lines[:10])  # Cap at 10
                 if len(error_lines) > 10:
-                    categories["type_errors"].append(f"... and {len(error_lines) - 10} more type errors")
+                    categories["type_errors"].append(
+                        f"... and {len(error_lines) - 10} more type errors"
+                    )
             else:
                 categories["type_errors"].append(f"Type check failed (exit {exit_code})")
 
         elif name in ("import-check", "import_check"):
-            error_lines = [l for l in output.splitlines() if "cannot resolve" in l.lower()]
+            error_lines = [line for line in output.splitlines() if "cannot resolve" in line.lower()]
             if error_lines:
                 categories["import_errors"].extend(error_lines[:10])
                 if len(error_lines) > 10:
-                    categories["import_errors"].append(f"... and {len(error_lines) - 10} more import errors")
+                    categories["import_errors"].append(
+                        f"... and {len(error_lines) - 10} more import errors"
+                    )
             else:
                 categories["import_errors"].append(f"Import check failed (exit {exit_code})")
 
         elif name == "lint":
-            error_lines = [l for l in output.splitlines() if ": " in l and ("E" in l or "F" in l)]
+            error_lines = [
+                line
+                for line in output.splitlines()
+                if ": " in line and ("E" in line or "F" in line)
+            ]
             if error_lines:
                 categories["lint_errors"].extend(error_lines[:10])
                 if len(error_lines) > 10:
-                    categories["lint_errors"].append(f"... and {len(error_lines) - 10} more lint errors")
+                    categories["lint_errors"].append(
+                        f"... and {len(error_lines) - 10} more lint errors"
+                    )
             else:
                 categories["lint_errors"].append(f"Lint check failed (exit {exit_code})")
 
@@ -110,14 +124,16 @@ def _classify_issues(evidence: list[dict]) -> dict:
             categories["test_failures"].append(f"Tests failed (exit {exit_code})")
             # Grab failure summary line if present
             for line in output.splitlines():
-                if "failed" in line.lower() and ("passed" in line.lower() or "error" in line.lower()):
+                if "failed" in line.lower() and (
+                    "passed" in line.lower() or "error" in line.lower()
+                ):
                     categories["test_failures"].append(line.strip())
                     break
 
         elif name == "build":
             categories["build_errors"].append(f"Build failed (exit {exit_code})")
             # Grab the last few lines which usually contain the error
-            error_tail = [l.strip() for l in output.strip().splitlines()[-5:] if l.strip()]
+            error_tail = [line.strip() for line in output.strip().splitlines()[-5:] if line.strip()]
             categories["build_errors"].extend(error_tail)
 
         else:
@@ -350,7 +366,9 @@ def verify_system() -> None:
             "all_checks_passed": passed,
             "cache_hit": cache_hit,
             "cache_key": cache_key,
-            "usage": provider.total_usage if call_llm else {"input_tokens": 0, "output_tokens": 0, "llm_calls": 0},
+            "usage": provider.total_usage
+            if call_llm
+            else {"input_tokens": 0, "output_tokens": 0, "llm_calls": 0},
         },
     )
 

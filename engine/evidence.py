@@ -139,17 +139,21 @@ def auto_detect_checks(project_dir: Path) -> list[dict]:
             checks.append({"name": "install", "command": "python -m pip install -e ."})
 
         # ALWAYS run syntax check — catches truncated files and basic errors
-        checks.append({
-            "name": "syntax-check",
-            "command": "python -m py_compile $(find . -name '*.py' -not -path './.venv/*' -not -path './venv/*' -not -path './.*')"
-                       " && echo 'All files compile'",
-        })
+        checks.append(
+            {
+                "name": "syntax-check",
+                "command": "python -m py_compile $(find . -name '*.py' -not -path './.venv/*' -not -path './venv/*' -not -path './.*')"
+                " && echo 'All files compile'",
+            }
+        )
 
         # ALWAYS run import validation — catches cross-file import errors
-        checks.append({
-            "name": "import-check",
-            "command": _build_python_import_check_command(project_dir),
-        })
+        checks.append(
+            {
+                "name": "import-check",
+                "command": _build_python_import_check_command(project_dir),
+            }
+        )
 
         # Read pyproject.toml for tool configs
         pyproject_text = ""
@@ -169,15 +173,22 @@ def auto_detect_checks(project_dir: Path) -> list[dict]:
         # Use --fix --unsafe-fixes to auto-fix both trivial issues (unused imports)
         # and common AI patterns (unused variables, `== False` comparisons) so only
         # genuinely unfixable problems remain as errors.
-        checks.append({"name": "lint", "command": "python -m ruff check . --select E,F --ignore E501 --fix --unsafe-fixes"})
+        checks.append(
+            {
+                "name": "lint",
+                "command": "python -m ruff check . --select E,F --ignore E501 --fix --unsafe-fixes",
+            }
+        )
 
         # mypy — always attempt for type safety.
         # --explicit-package-bases avoids "found twice under different module names"
         # when projects use a src/ layout.
-        checks.append({
-            "name": "typecheck",
-            "command": "python -m mypy . --ignore-missing-imports --no-error-summary --explicit-package-bases",
-        })
+        checks.append(
+            {
+                "name": "typecheck",
+                "command": "python -m mypy . --ignore-missing-imports --no-error-summary --explicit-package-bases",
+            }
+        )
 
         logger.info(
             "Auto-detected %d check(s) from Python project: %s",

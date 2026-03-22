@@ -61,7 +61,9 @@ def design_system() -> None:
 
     # Cache lookup
     template_hash = hash_content(prompt_template)
-    envelope_hash = hash_content(requirements + constraints + non_goals + extra_context + tier_guidance)
+    envelope_hash = hash_content(
+        requirements + constraints + non_goals + extra_context + tier_guidance
+    )
     params_h = hash_params(provider.model, provider.max_tokens)
     cache_key = build_cache_key("design", template_hash, envelope_hash, provider.model, params_h)
 

@@ -50,11 +50,10 @@ def _render_usage_report(project_dir):
         return
 
     # Run selector (compact)
-    run_labels = [
-        f"{r['run_id']} ({r.get('tier', 'unknown')})" for r in reports
-    ]
+    run_labels = [f"{r['run_id']} ({r.get('tier', 'unknown')})" for r in reports]
     selected = st.selectbox(
-        "Select Run", range(len(run_labels)),
+        "Select Run",
+        range(len(run_labels)),
         format_func=lambda i: run_labels[i],
         key="usage_run",
         label_visibility="collapsed",
@@ -79,18 +78,18 @@ def _render_usage_report(project_dir):
             f'<div style="font-size:11px; color:{TEXT_MUTED}; text-transform:uppercase; '
             f'letter-spacing:0.5px; margin-bottom:2px;">{label}</div>'
             f'<div style="font-size:16px; font-weight:600; color:{TEXT_BODY};">{value}</div>'
-            f'</div>'
+            f"</div>"
         )
 
     st.markdown(
         f'<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; '
-        f'background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:{RADIUS}; '
+        f"background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:{RADIUS}; "
         f'padding:4px 8px; margin-bottom:12px;">'
         + _mini_metric("Tier", tier_label)
         + _mini_metric("LLM Calls", str(llm_calls))
         + _mini_metric("Actual Cost", cost_str)
         + _mini_metric("vs Projection", proj_str)
-        + '</div>',
+        + "</div>",
         unsafe_allow_html=True,
     )
 
@@ -106,26 +105,28 @@ def _render_usage_report(project_dir):
         input_tokens = [s["input_tokens"] for s in stages]
         output_tokens = [s["output_tokens"] for s in stages]
 
-        fig = go.Figure(data=[
-            go.Bar(
-                name="Input Tokens",
-                x=stage_names,
-                y=input_tokens,
-                marker_color="#60A5FA",
-                text=[f"{t:,}" for t in input_tokens],
-                textposition="outside",
-                textfont_size=10,
-            ),
-            go.Bar(
-                name="Output Tokens",
-                x=stage_names,
-                y=output_tokens,
-                marker_color="#34D399",
-                text=[f"{t:,}" for t in output_tokens],
-                textposition="outside",
-                textfont_size=10,
-            ),
-        ])
+        fig = go.Figure(
+            data=[
+                go.Bar(
+                    name="Input Tokens",
+                    x=stage_names,
+                    y=input_tokens,
+                    marker_color="#60A5FA",
+                    text=[f"{t:,}" for t in input_tokens],
+                    textposition="outside",
+                    textfont_size=10,
+                ),
+                go.Bar(
+                    name="Output Tokens",
+                    x=stage_names,
+                    y=output_tokens,
+                    marker_color="#34D399",
+                    text=[f"{t:,}" for t in output_tokens],
+                    textposition="outside",
+                    textfont_size=10,
+                ),
+            ]
+        )
         fig.update_layout(
             barmode="group",
             yaxis_title="Tokens",
@@ -138,26 +139,27 @@ def _render_usage_report(project_dir):
 
     # Actual vs Projected comparison — compact two-column layout
     if projected.get("total_tokens", 0) > 0:
+
         def _usage_col(title: str, data: dict) -> str:
             return (
                 f'<div style="padding:8px 12px;">'
                 f'<div style="font-size:12px; font-weight:600; color:{TEXT_BODY}; '
                 f'margin-bottom:6px;">{title}</div>'
                 f'<div style="font-size:12px; color:{TEXT_MUTED}; line-height:1.8;">'
-                f'Input: {data.get("input_tokens", 0):,}<br>'
-                f'Output: {data.get("output_tokens", 0):,}<br>'
-                f'Total: {data.get("total_tokens", 0):,}<br>'
-                f'Cost: ${data.get("cost_usd", 0):.4f}'
-                f'</div></div>'
+                f"Input: {data.get('input_tokens', 0):,}<br>"
+                f"Output: {data.get('output_tokens', 0):,}<br>"
+                f"Total: {data.get('total_tokens', 0):,}<br>"
+                f"Cost: ${data.get('cost_usd', 0):.4f}"
+                f"</div></div>"
             )
 
         st.markdown(
             f'<div style="display:grid; grid-template-columns:1fr 1fr; gap:0; '
-            f'background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:{RADIUS}; '
+            f"background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:{RADIUS}; "
             f'margin-bottom:12px;">'
             + _usage_col("Actual", actual)
             + _usage_col("Projected", projected)
-            + '</div>',
+            + "</div>",
             unsafe_allow_html=True,
         )
 

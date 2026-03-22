@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -29,10 +28,11 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ComplianceIssue:
     """A single contract compliance violation."""
-    severity: str       # "error" | "warning"
-    category: str       # "missing_file" | "extra_file" | "budget" | "type_mismatch" | "missing_type"
-    component: str      # which component is affected (or "project" for global issues)
-    message: str        # human-readable description
+
+    severity: str  # "error" | "warning"
+    category: str  # "missing_file" | "extra_file" | "budget" | "type_mismatch" | "missing_type"
+    component: str  # which component is affected (or "project" for global issues)
+    message: str  # human-readable description
 
     def to_dict(self) -> dict:
         return {
@@ -46,6 +46,7 @@ class ComplianceIssue:
 @dataclass
 class ComplianceReport:
     """Full compliance check result."""
+
     passed: bool
     issues: list[ComplianceIssue] = field(default_factory=list)
     files_expected: int = 0
@@ -124,10 +125,14 @@ def check_contract_compliance(
     except (json.JSONDecodeError, OSError) as exc:
         return ComplianceReport(
             passed=False,
-            issues=[ComplianceIssue(
-                "error", "contract_load", "project",
-                f"Could not load design contract: {exc}",
-            )],
+            issues=[
+                ComplianceIssue(
+                    "error",
+                    "contract_load",
+                    "project",
+                    f"Could not load design contract: {exc}",
+                )
+            ],
         )
 
     components = contract_data.get("components", [])
@@ -146,9 +151,16 @@ def check_contract_compliance(
         if path.is_file():
             rel = str(path.relative_to(project_dir))
             # Skip node_modules, __pycache__, .git, .venv, etc.
-            if any(skip in rel for skip in (
-                "node_modules/", "__pycache__/", ".git/", ".env", ".venv/",
-            )):
+            if any(
+                skip in rel
+                for skip in (
+                    "node_modules/",
+                    "__pycache__/",
+                    ".git/",
+                    ".env",
+                    ".venv/",
+                )
+            ):
                 continue
             actual_files.add(rel)
 
@@ -161,19 +173,37 @@ def check_contract_compliance(
             if f in comp.get("files", []):
                 owner = comp["name"]
                 break
-        issues.append(ComplianceIssue(
-            "error", "missing_file", owner,
-            f"Contract requires '{f}' but it was not produced.",
-        ))
+        issues.append(
+            ComplianceIssue(
+                "error",
+                "missing_file",
+                owner,
+                f"Contract requires '{f}' but it was not produced.",
+            )
+        )
 
     # ── Extra files (not in contract) ──
     # Config files and package metadata are expected extras
     expected_extras = {
-        "package.json", "package-lock.json", "tsconfig.json", "tsconfig.node.json",
-        "vite.config.ts", "vite.config.js", ".eslintrc.js", ".eslintrc.json",
-        "postcss.config.js", "tailwind.config.js", "tailwind.config.ts",
-        "requirements.txt", "pyproject.toml", "setup.py", "setup.cfg",
-        "README.md", ".gitignore", "index.html", "Makefile",
+        "package.json",
+        "package-lock.json",
+        "tsconfig.json",
+        "tsconfig.node.json",
+        "vite.config.ts",
+        "vite.config.js",
+        ".eslintrc.js",
+        ".eslintrc.json",
+        "postcss.config.js",
+        "tailwind.config.js",
+        "tailwind.config.ts",
+        "requirements.txt",
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+        "README.md",
+        ".gitignore",
+        "index.html",
+        "Makefile",
         "DESIGN_CONTRACT.json",
     }
     # __init__.py files are structural necessities in Python packages —
@@ -188,10 +218,14 @@ def check_contract_compliance(
             expected_extras.add(f)
     extra = actual_files - expected_files - expected_extras
     for f in sorted(extra):
-        issues.append(ComplianceIssue(
-            "warning", "extra_file", "project",
-            f"File '{f}' was produced but is not in any component's contract.",
-        ))
+        issues.append(
+            ComplianceIssue(
+                "warning",
+                "extra_file",
+                "project",
+                f"File '{f}' was produced but is not in any component's contract.",
+            )
+        )
 
     # ── Per-component budget check ──
     for comp in components:
@@ -200,20 +234,28 @@ def check_contract_compliance(
         # Count files that actually exist for this component
         existing = [f for f in comp_files if f in actual_files]
         if len(existing) > max_files:
-            issues.append(ComplianceIssue(
-                "error", "budget", comp["name"],
-                f"Component has {len(existing)} files but max_files is {max_files}.",
-            ))
+            issues.append(
+                ComplianceIssue(
+                    "error",
+                    "budget",
+                    comp["name"],
+                    f"Component has {len(existing)} files but max_files is {max_files}.",
+                )
+            )
 
     # ── Total budget check ──
     # Only count substantive files against budget (exclude structural extras)
     budgeted_files = actual_files - expected_extras
     if len(budgeted_files) > total_budget:
-        issues.append(ComplianceIssue(
-            "error", "budget", "project",
-            f"Total files ({len(budgeted_files)}) exceeds budget ({total_budget})."
-            f" ({len(actual_files)} total including {len(actual_files - budgeted_files)} structural extras)",
-        ))
+        issues.append(
+            ComplianceIssue(
+                "error",
+                "budget",
+                "project",
+                f"Total files ({len(budgeted_files)}) exceeds budget ({total_budget})."
+                f" ({len(actual_files)} total including {len(actual_files - budgeted_files)} structural extras)",
+            )
+        )
 
     # ── Canonical type checks ──
     for td in canonical_types:
@@ -223,30 +265,42 @@ def check_contract_compliance(
 
         file_path = project_dir / type_file
         if not file_path.exists():
-            issues.append(ComplianceIssue(
-                "error", "missing_type", "project",
-                f"Canonical type '{type_name}' should be in '{type_file}' "
-                f"but that file does not exist.",
-            ))
+            issues.append(
+                ComplianceIssue(
+                    "error",
+                    "missing_type",
+                    "project",
+                    f"Canonical type '{type_name}' should be in '{type_file}' "
+                    f"but that file does not exist.",
+                )
+            )
             continue
 
         # Check that the type name appears in the file
         content = file_path.read_text()
         if type_name not in content:
-            issues.append(ComplianceIssue(
-                "error", "missing_type", "project",
-                f"Canonical type '{type_name}' not found in '{type_file}'.",
-            ))
+            issues.append(
+                ComplianceIssue(
+                    "error",
+                    "missing_type",
+                    "project",
+                    f"Canonical type '{type_name}' not found in '{type_file}'.",
+                )
+            )
             continue
 
         # Check that expected fields appear in the file
         for field_name in type_fields:
             if field_name not in content:
-                issues.append(ComplianceIssue(
-                    "warning", "type_mismatch", "project",
-                    f"Field '{field_name}' from canonical type '{type_name}' "
-                    f"not found in '{type_file}'.",
-                ))
+                issues.append(
+                    ComplianceIssue(
+                        "warning",
+                        "type_mismatch",
+                        "project",
+                        f"Field '{field_name}' from canonical type '{type_name}' "
+                        f"not found in '{type_file}'.",
+                    )
+                )
 
     # ── Build report ──
     has_errors = any(i.severity == "error" for i in issues)

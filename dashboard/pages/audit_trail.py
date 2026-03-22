@@ -17,7 +17,6 @@ from dashboard.theme import (
     RADIUS,
     STATUS_FAILED,
     STATUS_PASSED,
-    TEXT_BODY,
     TEXT_MUTED,
     TEXT_PRIMARY,
 )

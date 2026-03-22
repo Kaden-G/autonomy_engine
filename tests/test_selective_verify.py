@@ -132,6 +132,8 @@ class TestAlwaysLlmCallsModel:
         provider.model = "test-model"
         provider.provider = "claude"
         provider.max_tokens = 16384
+        # Prevent MagicMock from leaking into JSON-serialized trace entries
+        provider.total_usage = {"input_tokens": 0, "output_tokens": 0, "llm_calls": 1}
 
         with (
             patch("tasks.verify.load_all_evidence", return_value=evidence),

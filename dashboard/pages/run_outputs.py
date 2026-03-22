@@ -15,25 +15,17 @@ import streamlit as st
 
 from dashboard.data_loader import (
     get_intake_status,
-    get_pipeline_status,
     get_state_dir,
     list_runs,
-    load_artifact,
     load_evidence,
-    load_trace,
 )
 from dashboard.theme import (
     BG_SURFACE,
     BORDER,
-    FONT_BODY,
-    FONT_SMALL,
-    INFO,
     MUTED,
     RADIUS,
     STAGE_COLORS,
     STATUS_FAILED,
-    STATUS_PASSED,
-    STATUS_PENDING,
     SUCCESS,
     TEXT_BODY,
     TEXT_MUTED,
@@ -56,21 +48,36 @@ STAGE_OUTPUTS = {
         "color": "#94A3B8",
         "description": "Your project description, captured as structured artifacts",
         "files": [
-            ("Project Spec", "inputs/project_spec.yml",
-             "The machine-readable source of truth — all requirements, constraints, and goals in one file",
-             "yaml"),
-            ("Requirements", "inputs/REQUIREMENTS.md",
-             "Functional and non-functional requirements rendered for human review",
-             "md"),
-            ("Constraints", "inputs/CONSTRAINTS.md",
-             "Technical constraints and boundaries — languages, frameworks, performance targets",
-             "md"),
-            ("Non-Goals", "inputs/NON_GOALS.md",
-             "Explicit out-of-scope items so the AI knows where to stop",
-             "md"),
-            ("Acceptance Criteria", "inputs/ACCEPTANCE_CRITERIA.md",
-             "Measurable criteria for deciding whether the generated project meets the spec",
-             "md"),
+            (
+                "Project Spec",
+                "inputs/project_spec.yml",
+                "The machine-readable source of truth — all requirements, constraints, and goals in one file",
+                "yaml",
+            ),
+            (
+                "Requirements",
+                "inputs/REQUIREMENTS.md",
+                "Functional and non-functional requirements rendered for human review",
+                "md",
+            ),
+            (
+                "Constraints",
+                "inputs/CONSTRAINTS.md",
+                "Technical constraints and boundaries — languages, frameworks, performance targets",
+                "md",
+            ),
+            (
+                "Non-Goals",
+                "inputs/NON_GOALS.md",
+                "Explicit out-of-scope items so the AI knows where to stop",
+                "md",
+            ),
+            (
+                "Acceptance Criteria",
+                "inputs/ACCEPTANCE_CRITERIA.md",
+                "Measurable criteria for deciding whether the generated project meets the spec",
+                "md",
+            ),
         ],
     },
     "bootstrap": {
@@ -79,12 +86,18 @@ STAGE_OUTPUTS = {
         "color": STAGE_COLORS["bootstrap"],
         "description": "Run initialization — audit trail, config snapshot, folder structure",
         "files": [
-            ("Audit Trace", "run:trace.jsonl",
-             "The tamper-evident audit log — every action, model call, and decision recorded with HMAC signatures",
-             "jsonl"),
-            ("Config Snapshot", "run:config_snapshot.yml",
-             "A frozen copy of engine settings at the moment this run started — ensures reproducibility",
-             "yaml"),
+            (
+                "Audit Trace",
+                "run:trace.jsonl",
+                "The tamper-evident audit log — every action, model call, and decision recorded with HMAC signatures",
+                "jsonl",
+            ),
+            (
+                "Config Snapshot",
+                "run:config_snapshot.yml",
+                "A frozen copy of engine settings at the moment this run started — ensures reproducibility",
+                "yaml",
+            ),
         ],
     },
     "design": {
@@ -93,15 +106,24 @@ STAGE_OUTPUTS = {
         "color": STAGE_COLORS["design"],
         "description": "AI-generated architecture and the binding contract for implementation",
         "files": [
-            ("Architecture", "designs/ARCHITECTURE.md",
-             "Human-readable design document — system overview, component breakdown, data flow diagrams",
-             "md"),
-            ("Design Contract", "designs/DESIGN_CONTRACT.json",
-             "The binding blueprint — exact file lists, shared types, dependency maps, per-component budgets",
-             "json"),
-            ("Design Decision", "run:decisions/design.json",
-             "The human gate decision record — who approved the design and when",
-             "json"),
+            (
+                "Architecture",
+                "designs/ARCHITECTURE.md",
+                "Human-readable design document — system overview, component breakdown, data flow diagrams",
+                "md",
+            ),
+            (
+                "Design Contract",
+                "designs/DESIGN_CONTRACT.json",
+                "The binding blueprint — exact file lists, shared types, dependency maps, per-component budgets",
+                "json",
+            ),
+            (
+                "Design Decision",
+                "run:decisions/design.json",
+                "The human gate decision record — who approved the design and when",
+                "json",
+            ),
         ],
     },
     "implement": {
@@ -110,12 +132,18 @@ STAGE_OUTPUTS = {
         "color": STAGE_COLORS["implement"],
         "description": "AI-generated source code, produced chunk-by-chunk from the design contract",
         "files": [
-            ("Implementation", "implementations/IMPLEMENTATION.md",
-             "The raw AI output — fenced code blocks with file paths, ready for extraction",
-             "md"),
-            ("File Manifest", "implementations/FILE_MANIFEST.json",
-             "Index of every file the AI intended to produce — names, components, and dependencies",
-             "json"),
+            (
+                "Implementation",
+                "implementations/IMPLEMENTATION.md",
+                "The raw AI output — fenced code blocks with file paths, ready for extraction",
+                "md",
+            ),
+            (
+                "File Manifest",
+                "implementations/FILE_MANIFEST.json",
+                "Index of every file the AI intended to produce — names, components, and dependencies",
+                "json",
+            ),
         ],
     },
     "extract": {
@@ -124,9 +152,12 @@ STAGE_OUTPUTS = {
         "color": STAGE_COLORS["extract"],
         "description": "Code blocks parsed from AI output into real files on disk",
         "files": [
-            ("Build Manifest", "build/MANIFEST.md",
-             "Inventory of every extracted file — name, size in bytes, and line count",
-             "md"),
+            (
+                "Build Manifest",
+                "build/MANIFEST.md",
+                "Inventory of every extracted file — name, size in bytes, and line count",
+                "md",
+            ),
         ],
     },
     "test": {
@@ -135,12 +166,18 @@ STAGE_OUTPUTS = {
         "color": STAGE_COLORS["test"],
         "description": "Automated quality checks run in an isolated sandbox",
         "files": [
-            ("Test Results", "tests/TEST_RESULTS.md",
-             "Human-readable summary — pass/fail per check with key output excerpts",
-             "md"),
-            ("Evidence Records", "evidence:",
-             "One structured record per check — command, exit code, full output, timing, environment",
-             "evidence"),
+            (
+                "Test Results",
+                "tests/TEST_RESULTS.md",
+                "Human-readable summary — pass/fail per check with key output excerpts",
+                "md",
+            ),
+            (
+                "Evidence Records",
+                "evidence:",
+                "One structured record per check — command, exit code, full output, timing, environment",
+                "evidence",
+            ),
         ],
     },
     "verify": {
@@ -149,12 +186,18 @@ STAGE_OUTPUTS = {
         "color": STAGE_COLORS["verify"],
         "description": "Final go/no-go verdict with root-cause analysis for failures",
         "files": [
-            ("Verification Report", "tests/VERIFICATION.md",
-             "The final verdict — ACCEPTED or REJECTED with rationale and per-category analysis",
-             "md"),
-            ("Verify Decision", "run:decisions/verify.json",
-             "The go/no-go decision captured in the audit trail for this run",
-             "json"),
+            (
+                "Verification Report",
+                "tests/VERIFICATION.md",
+                "The final verdict — ACCEPTED or REJECTED with rationale and per-category analysis",
+                "md",
+            ),
+            (
+                "Verify Decision",
+                "run:decisions/verify.json",
+                "The go/no-go decision captured in the audit trail for this run",
+                "json",
+            ),
         ],
     },
 }
@@ -165,8 +208,7 @@ STAGE_ORDER = ["intake", "bootstrap", "design", "implement", "extract", "test", 
 def render(project_dir):
     """Render the Run Outputs page."""
     st.markdown(
-        f'<h1 style="font-size:28px; color:{TEXT_PRIMARY}; margin-bottom:4px;">'
-        f'📂 Run Outputs</h1>',
+        f'<h1 style="font-size:28px; color:{TEXT_PRIMARY}; margin-bottom:4px;">📂 Run Outputs</h1>',
         unsafe_allow_html=True,
     )
 
@@ -207,7 +249,11 @@ def render(project_dir):
     for stage_key in STAGE_ORDER:
         stage = STAGE_OUTPUTS[stage_key]
         _render_stage_section(
-            project_dir, state_dir, run_dir, stage_key, stage,
+            project_dir,
+            state_dir,
+            run_dir,
+            stage_key,
+            stage,
             evidence_records if stage_key == "test" else None,
         )
 
@@ -276,9 +322,9 @@ def _render_stage_section(
             display:flex; align-items:center; gap:10px;
             margin-top:24px; margin-bottom:4px;
         ">
-            <span style="font-size:22px;">{stage['icon']}</span>
+            <span style="font-size:22px;">{stage["icon"]}</span>
             <span style="font-size:17px; font-weight:600; color:{TEXT_PRIMARY};">
-                {stage['label']}
+                {stage["label"]}
             </span>
             {status_dot}
             <span style="font-size:12px; color:{TEXT_MUTED};">
@@ -286,7 +332,7 @@ def _render_stage_section(
             </span>
         </div>
         <div style="font-size:13px; color:{TEXT_BODY}; margin-bottom:12px; margin-left:34px;">
-            {stage['description']}
+            {stage["description"]}
         </div>""",
         unsafe_allow_html=True,
     )
@@ -297,8 +343,14 @@ def _render_stage_section(
             _render_evidence_section(evidence_records, color)
         else:
             _render_file_card(
-                project_dir, state_dir, run_dir,
-                display_name, path, description, ftype, color,
+                project_dir,
+                state_dir,
+                run_dir,
+                display_name,
+                path,
+                description,
+                ftype,
+                color,
             )
 
 
@@ -410,10 +462,10 @@ def _render_file_card(
 
 def _render_jsonl(content: str):
     """Render a JSONL file as a sequence of formatted entries."""
-    lines = [l for l in content.strip().splitlines() if l.strip()]
+    lines = [line for line in content.strip().splitlines() if line.strip()]
     st.markdown(
         f'<div style="font-size:12px; color:{TEXT_MUTED}; margin-bottom:8px;">'
-        f'{len(lines)} entries</div>',
+        f"{len(lines)} entries</div>",
         unsafe_allow_html=True,
     )
     # Show first 20 entries, with a note if truncated
@@ -462,17 +514,23 @@ def _render_evidence_section(evidence_records: list[dict] | None, stage_color: s
         )
         return
 
-    passed = sum(1 for r in evidence_records
-                 if r.get("exit_code") == 0 and r.get("name") != "no_checks_configured")
-    failed = sum(1 for r in evidence_records
-                 if r.get("exit_code", 0) != 0 and r.get("name") != "no_checks_configured")
+    passed = sum(
+        1
+        for r in evidence_records
+        if r.get("exit_code") == 0 and r.get("name") != "no_checks_configured"
+    )
+    failed = sum(
+        1
+        for r in evidence_records
+        if r.get("exit_code", 0) != 0 and r.get("name") != "no_checks_configured"
+    )
 
     st.markdown(
         f'<div style="font-size:12px; color:{TEXT_MUTED}; margin-bottom:6px; margin-left:4px;">'
-        f'🧪 <strong>{len(evidence_records)}</strong> checks — '
+        f"🧪 <strong>{len(evidence_records)}</strong> checks — "
         f'<span style="color:{SUCCESS};">{passed} passed</span>'
-        f'{f", <span style=&quot;color:{STATUS_FAILED};&quot;>{failed} failed</span>" if failed else ""}'
-        f'</div>',
+        f"{f', <span style=&quot;color:{STATUS_FAILED};&quot;>{failed} failed</span>' if failed else ''}"
+        f"</div>",
         unsafe_allow_html=True,
     )
 
@@ -491,11 +549,11 @@ def _render_evidence_section(evidence_records: list[dict] | None, stage_color: s
         if exit_code == 0:
             icon = "✅"
             status_label = "PASS"
-            border_color = SUCCESS
+            _border_color = SUCCESS  # noqa: F841 — reserved for future card styling
         else:
             icon = "❌"
             status_label = f"FAIL (exit {exit_code})"
-            border_color = STATUS_FAILED
+            _border_color = STATUS_FAILED  # noqa: F841 — reserved for future card styling
 
         with st.expander(f"{icon} {name}  ·  {status_label}", expanded=False):
             # Command

@@ -28,10 +28,6 @@ from dashboard.pages import (
 from dashboard.theme import (
     GLOBAL_CSS,
     MUTED,
-    PRIMARY,
-    SIDEBAR_ACCENT,
-    SIDEBAR_BG,
-    SIDEBAR_TEXT,
     TEXT_MUTED,
 )
 
@@ -98,7 +94,7 @@ if st.session_state["page"] == "Run Inspector":
 with st.sidebar:
     # Brand header
     st.markdown(
-        f"""<div style="padding: 8px 0 4px 0;">
+        """<div style="padding: 8px 0 4px 0;">
             <span style="font-size: 22px; font-weight: 700; color: white;">
                 🏗️ Autonomy Engine
             </span>
@@ -106,8 +102,7 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
     st.markdown(
-        f'<span style="font-size: 12px; color: {TEXT_MUTED};">'
-        f"Project: {project_dir.name}</span>",
+        f'<span style="font-size: 12px; color: {TEXT_MUTED};">Project: {project_dir.name}</span>',
         unsafe_allow_html=True,
     )
 

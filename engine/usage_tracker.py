@@ -32,6 +32,7 @@ _LLM_STAGES = {"design", "implement", "verify"}
 @dataclass
 class StageUsage:
     """Actual token usage for one pipeline stage."""
+
     stage: str
     input_tokens: int = 0
     output_tokens: int = 0
@@ -47,6 +48,7 @@ class StageUsage:
 @dataclass
 class UsageReport:
     """Full pipeline usage report — actual vs estimated."""
+
     run_id: str
     tier: str = ""
     stages: list[StageUsage] = field(default_factory=list)
@@ -98,9 +100,7 @@ class UsageReport:
         return (self.actual_total_tokens / self.projected_total_tokens) * 100
 
     def to_dict(self) -> dict:
-        pricing = _resolve_pricing_for_model(
-            next((s.model for s in self.stages if s.model), "")
-        )
+        pricing = _resolve_pricing_for_model(next((s.model for s in self.stages if s.model), ""))
         return {
             "run_id": self.run_id,
             "tier": self.tier,
@@ -148,17 +148,17 @@ class UsageReport:
 # ── Pricing (mirrors cost_estimator.py) ──────────────────────────────────────
 
 _PRICING: dict[str, dict[str, float]] = {
-    "claude-opus-4":     {"input": 15.00, "output": 75.00},
-    "claude-sonnet-4":   {"input":  3.00, "output": 15.00},
-    "claude-haiku-4":    {"input":  0.80, "output":  4.00},
-    "claude-3-5-sonnet": {"input":  3.00, "output": 15.00},
-    "claude-3-5-haiku":  {"input":  0.80, "output":  4.00},
-    "claude-3-opus":     {"input": 15.00, "output": 75.00},
-    "gpt-4o":            {"input":  2.50, "output": 10.00},
-    "gpt-4o-mini":       {"input":  0.15, "output":  0.60},
-    "gpt-4-turbo":       {"input": 10.00, "output": 30.00},
-    "o1":                {"input": 15.00, "output": 60.00},
-    "o3-mini":           {"input":  1.10, "output":  4.40},
+    "claude-opus-4": {"input": 15.00, "output": 75.00},
+    "claude-sonnet-4": {"input": 3.00, "output": 15.00},
+    "claude-haiku-4": {"input": 0.80, "output": 4.00},
+    "claude-3-5-sonnet": {"input": 3.00, "output": 15.00},
+    "claude-3-5-haiku": {"input": 0.80, "output": 4.00},
+    "claude-3-opus": {"input": 15.00, "output": 75.00},
+    "gpt-4o": {"input": 2.50, "output": 10.00},
+    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
+    "gpt-4-turbo": {"input": 10.00, "output": 30.00},
+    "o1": {"input": 15.00, "output": 60.00},
+    "o3-mini": {"input": 1.10, "output": 4.40},
 }
 
 
@@ -201,14 +201,16 @@ def extract_usage_from_traces(entries: list[dict]) -> list[StageUsage]:
         extra = entry.get("extra", {})
         usage = extra.get("usage", {})
 
-        stages.append(StageUsage(
-            stage=task,
-            input_tokens=usage.get("input_tokens", 0),
-            output_tokens=usage.get("output_tokens", 0),
-            llm_calls=usage.get("llm_calls", 0),
-            cache_hit=extra.get("cache_hit", False),
-            model=entry.get("model", ""),
-        ))
+        stages.append(
+            StageUsage(
+                stage=task,
+                input_tokens=usage.get("input_tokens", 0),
+                output_tokens=usage.get("output_tokens", 0),
+                llm_calls=usage.get("llm_calls", 0),
+                cache_hit=extra.get("cache_hit", False),
+                model=entry.get("model", ""),
+            )
+        )
 
     return stages
 
@@ -232,6 +234,7 @@ def build_usage_report(
     if estimate is not None:
         try:
             from engine.cost_estimator import TierName
+
             tn = TierName(tier_name) if tier_name else TierName.MVP
             report.projected_input_tokens = estimate.total_input_tokens
             report.projected_output_tokens = estimate.total_output_tokens(tn)

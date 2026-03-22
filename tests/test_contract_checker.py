@@ -2,7 +2,6 @@
 
 import json
 
-import pytest
 
 from engine.contract_checker import (
     ComplianceIssue,
@@ -126,10 +125,13 @@ class TestCheckContractCompliance:
         contract_path = _write_contract(tmp_path, contract)
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        _create_project_files(project_dir, {
-            "src/types/index.ts": "export interface User { id: string; email: string; }",
-            "src/config.ts": "export const config = {};",
-        })
+        _create_project_files(
+            project_dir,
+            {
+                "src/types/index.ts": "export interface User { id: string; email: string; }",
+                "src/config.ts": "export const config = {};",
+            },
+        )
         report = check_contract_compliance(contract_path, project_dir)
         assert report.passed is True
         assert report.files_missing == 0
@@ -140,9 +142,12 @@ class TestCheckContractCompliance:
         project_dir = tmp_path / "project"
         project_dir.mkdir()
         # Only create one of two expected files
-        _create_project_files(project_dir, {
-            "src/types/index.ts": "export interface User { id: string; email: string; }",
-        })
+        _create_project_files(
+            project_dir,
+            {
+                "src/types/index.ts": "export interface User { id: string; email: string; }",
+            },
+        )
         report = check_contract_compliance(contract_path, project_dir)
         assert report.passed is False
         assert report.files_missing == 1
@@ -153,11 +158,14 @@ class TestCheckContractCompliance:
         contract_path = _write_contract(tmp_path, contract)
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        _create_project_files(project_dir, {
-            "src/types/index.ts": "export interface User { id: string; email: string; }",
-            "src/config.ts": "export const config = {};",
-            "src/extra.ts": "// not in contract",
-        })
+        _create_project_files(
+            project_dir,
+            {
+                "src/types/index.ts": "export interface User { id: string; email: string; }",
+                "src/config.ts": "export const config = {};",
+                "src/extra.ts": "// not in contract",
+            },
+        )
         report = check_contract_compliance(contract_path, project_dir)
         # Extra files are warnings, not errors — should still pass
         assert report.passed is True
@@ -170,12 +178,15 @@ class TestCheckContractCompliance:
         contract_path = _write_contract(tmp_path, contract)
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        _create_project_files(project_dir, {
-            "src/types/index.ts": "export interface User { id: string; email: string; }",
-            "src/config.ts": "export const config = {};",
-            "package.json": "{}",
-            "tsconfig.json": "{}",
-        })
+        _create_project_files(
+            project_dir,
+            {
+                "src/types/index.ts": "export interface User { id: string; email: string; }",
+                "src/config.ts": "export const config = {};",
+                "package.json": "{}",
+                "tsconfig.json": "{}",
+            },
+        )
         report = check_contract_compliance(contract_path, project_dir)
         assert report.passed is True
         assert report.files_extra == 0
@@ -185,13 +196,16 @@ class TestCheckContractCompliance:
         contract_path = _write_contract(tmp_path, contract)
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        _create_project_files(project_dir, {
-            "src/types/index.ts": "export interface User { id: string; email: string; }",
-            "src/config.ts": "export const config = {};",
-            "src/extra1.ts": "",
-            "src/extra2.ts": "",
-            "src/extra3.ts": "",
-        })
+        _create_project_files(
+            project_dir,
+            {
+                "src/types/index.ts": "export interface User { id: string; email: string; }",
+                "src/config.ts": "export const config = {};",
+                "src/extra1.ts": "",
+                "src/extra2.ts": "",
+                "src/extra3.ts": "",
+            },
+        )
         report = check_contract_compliance(contract_path, project_dir)
         assert report.passed is False
         assert any(i.category == "budget" for i in report.issues)
@@ -201,10 +215,13 @@ class TestCheckContractCompliance:
         contract_path = _write_contract(tmp_path, contract)
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        _create_project_files(project_dir, {
-            "src/types/index.ts": "export interface SomeOtherType { x: number; }",
-            "src/config.ts": "export const config = {};",
-        })
+        _create_project_files(
+            project_dir,
+            {
+                "src/types/index.ts": "export interface SomeOtherType { x: number; }",
+                "src/config.ts": "export const config = {};",
+            },
+        )
         report = check_contract_compliance(contract_path, project_dir)
         assert report.passed is False
         assert any(i.category == "missing_type" for i in report.issues)
@@ -215,15 +232,15 @@ class TestCheckContractCompliance:
         project_dir = tmp_path / "project"
         project_dir.mkdir()
         # Has User but is missing the "email" field
-        _create_project_files(project_dir, {
-            "src/types/index.ts": "export interface User { id: string; name: string; }",
-            "src/config.ts": "export const config = {};",
-        })
-        report = check_contract_compliance(contract_path, project_dir)
-        assert any(
-            i.category == "type_mismatch" and "email" in i.message
-            for i in report.issues
+        _create_project_files(
+            project_dir,
+            {
+                "src/types/index.ts": "export interface User { id: string; name: string; }",
+                "src/config.ts": "export const config = {};",
+            },
         )
+        report = check_contract_compliance(contract_path, project_dir)
+        assert any(i.category == "type_mismatch" and "email" in i.message for i in report.issues)
 
     def test_corrupt_contract_file(self, tmp_path):
         path = tmp_path / "DESIGN_CONTRACT.json"
@@ -240,11 +257,14 @@ class TestCheckContractCompliance:
         contract_path = _write_contract(tmp_path, contract)
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        _create_project_files(project_dir, {
-            "src/types/index.ts": "export interface User { id: string; email: string; }",
-            "src/config.ts": "export const config = {};",
-            "node_modules/foo/index.js": "module.exports = {};",
-        })
+        _create_project_files(
+            project_dir,
+            {
+                "src/types/index.ts": "export interface User { id: string; email: string; }",
+                "src/config.ts": "export const config = {};",
+                "node_modules/foo/index.js": "module.exports = {};",
+            },
+        )
         report = check_contract_compliance(contract_path, project_dir)
         # node_modules file should not appear as extra
         assert report.passed is True

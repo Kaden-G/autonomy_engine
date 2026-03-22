@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +32,11 @@ CONTRACT_END = "<!-- DESIGN_CONTRACT_END -->"
 
 # ── Data classes (lightweight — no Pydantic dependency required) ─────────────
 
+
 @dataclass
 class TypeDefinition:
     """A single type/interface/enum in the canonical schema."""
+
     name: str
     kind: str  # "interface" | "type" | "enum" | "class" | "dataclass"
     fields: dict[str, str]  # field_name → type_string (e.g. "id" → "string")
@@ -61,6 +63,7 @@ class TypeDefinition:
 @dataclass
 class ComponentContract:
     """Contract for a single implementation component/chunk."""
+
     name: str
     description: str
     files: list[str]  # exact file paths this component MUST produce
@@ -93,8 +96,9 @@ class ComponentContract:
 @dataclass
 class TechDecision:
     """A locked technology choice — not a suggestion, a mandate."""
+
     category: str  # e.g. "framework", "database", "styling", "bundler"
-    choice: str    # e.g. "React 18", "IndexedDB via Dexie", "Tailwind CSS"
+    choice: str  # e.g. "React 18", "IndexedDB via Dexie", "Tailwind CSS"
     rationale: str  # one-line why
 
     def to_dict(self) -> dict:
@@ -116,6 +120,7 @@ class TechDecision:
 @dataclass
 class DesignContract:
     """The full design contract — structured handoff from Design to Implement."""
+
     project_name: str
     language: str  # "typescript" | "python" | "javascript" etc.
     components: list[ComponentContract]
@@ -215,8 +220,7 @@ def validate_contract(contract: DesignContract) -> list[str]:
         for dep in comp.imports_from:
             if dep not in [c.name for c in contract.components]:
                 errors.append(
-                    f"Component '{comp.name}' imports from '{dep}' "
-                    f"which is not a known component"
+                    f"Component '{comp.name}' imports from '{dep}' which is not a known component"
                 )
 
     # ── Cross-file uniqueness ──
@@ -235,8 +239,7 @@ def validate_contract(contract: DesignContract) -> list[str]:
     total_files = len(set(all_planned_files))
     if total_files > contract.total_file_budget:
         errors.append(
-            f"Total planned files ({total_files}) exceeds budget "
-            f"({contract.total_file_budget})"
+            f"Total planned files ({total_files}) exceeds budget ({contract.total_file_budget})"
         )
 
     # ── Canonical types ──
@@ -280,7 +283,7 @@ def extract_contract(architecture_text: str) -> DesignContract:
     end_idx = architecture_text.find(CONTRACT_END)
 
     if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-        raw = architecture_text[start_idx + len(CONTRACT_START):end_idx].strip()
+        raw = architecture_text[start_idx + len(CONTRACT_START) : end_idx].strip()
     else:
         # Fallback: look for a JSON block with "components"
         pattern = r"```json\s*(\{[\s\S]*?\"components\"\s*:\s*\[[\s\S]*?\})\s*```"
@@ -298,16 +301,14 @@ def extract_contract(architecture_text: str) -> DesignContract:
     raw = raw.strip()
     if raw.startswith("```"):
         first_nl = raw.index("\n")
-        raw = raw[first_nl + 1:]
+        raw = raw[first_nl + 1 :]
     if raw.endswith("```"):
-        raw = raw[:raw.rfind("```")].rstrip()
+        raw = raw[: raw.rfind("```")].rstrip()
 
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            f"DESIGN_CONTRACT JSON is malformed: {exc}"
-        ) from exc
+        raise RuntimeError(f"DESIGN_CONTRACT JSON is malformed: {exc}") from exc
 
     contract = DesignContract.from_dict(data)
 

@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-from dashboard.theme import STATUS_FAILED, STATUS_PASSED, TEXT_BODY, TEXT_MUTED
+from dashboard.theme import STATUS_FAILED, STATUS_PASSED
 
 
 def render_evidence_card(record: dict):
@@ -18,7 +18,7 @@ def render_evidence_card(record: dict):
     passed = exit_code == 0
     status_icon = "✓" if passed else "✗"
     status_text = "PASSED" if passed else "FAILED"
-    status_color = STATUS_PASSED if passed else STATUS_FAILED
+    _status_color = STATUS_PASSED if passed else STATUS_FAILED  # noqa: F841 — reserved for future card styling
 
     with st.expander(
         f"{status_icon}  **{name}** — {status_text} (exit {exit_code})",

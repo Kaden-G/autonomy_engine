@@ -19,7 +19,6 @@ from dashboard.theme import (
     STATUS_PASSED,
     STATUS_PENDING,
     STATUS_RUNNING,
-    TEXT_BODY,
     TEXT_MUTED,
     TEXT_PRIMARY,
 )
@@ -96,7 +95,7 @@ def render_pipeline(
                 # Show as passed if a later stage DID run (implies this one completed)
                 stage_order = [s[1] for s in STAGES]
                 this_idx = stage_order.index(stage_key)
-                later_ran = any(s in traced for s in stage_order[this_idx + 1:])
+                later_ran = any(s in traced for s in stage_order[this_idx + 1 :])
                 if later_ran:
                     state = "passed"
                 else:
@@ -128,7 +127,7 @@ def render_pipeline(
                         display:inline-flex; align-items:center; justify-content:center;
                         font-size:18px; font-weight:700;">{icon}</div>
                     <div style="font-size:{FONT_BODY}; font-weight:600;
-                        color:{TEXT_PRIMARY if state != 'pending' else TEXT_MUTED};
+                        color:{TEXT_PRIMARY if state != "pending" else TEXT_MUTED};
                         margin-top:6px;">{label}</div>
                 </div>""",
                 unsafe_allow_html=True,

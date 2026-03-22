@@ -8,7 +8,6 @@ from tasks.extract import (
     _MAX_FILES_MVP,
     _MAX_FILES_PREMIUM,
     _MAX_TOTAL_BYTES_MVP,
-    _MAX_TOTAL_BYTES_PREMIUM,
     _check_extraction_limits,
 )
 from tasks.manifest_schema import FileEntry, FileManifest
@@ -24,10 +23,7 @@ def _clean_tier():
 
 def _make_manifest(n_files: int, content_size: int = 50) -> FileManifest:
     """Build a FileManifest with *n_files* files of *content_size* bytes each."""
-    files = [
-        FileEntry(path=f"src/file_{i}.ts", content="x" * content_size)
-        for i in range(n_files)
-    ]
+    files = [FileEntry(path=f"src/file_{i}.ts", content="x" * content_size) for i in range(n_files)]
     return FileManifest(files=files)
 
 

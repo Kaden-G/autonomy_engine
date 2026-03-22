@@ -18,7 +18,6 @@ Usage::
 from __future__ import annotations
 
 import logging
-import textwrap
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -26,7 +25,7 @@ from pathlib import Path
 import yaml
 
 from engine.context import get_state_dir, get_config_path, get_prompts_dir
-from engine.llm_provider import get_model_limit, resolve_max_tokens
+from engine.llm_provider import get_model_limit
 
 logger = logging.getLogger(__name__)
 
@@ -35,18 +34,18 @@ logger = logging.getLogger(__name__)
 
 _PRICING: dict[str, dict[str, float]] = {
     # Claude models — prefix-matched (same as llm_provider)
-    "claude-opus-4":     {"input": 15.00, "output": 75.00},
-    "claude-sonnet-4":   {"input":  3.00, "output": 15.00},
-    "claude-haiku-4":    {"input":  0.80, "output":  4.00},
-    "claude-3-5-sonnet": {"input":  3.00, "output": 15.00},
-    "claude-3-5-haiku":  {"input":  0.80, "output":  4.00},
-    "claude-3-opus":     {"input": 15.00, "output": 75.00},
+    "claude-opus-4": {"input": 15.00, "output": 75.00},
+    "claude-sonnet-4": {"input": 3.00, "output": 15.00},
+    "claude-haiku-4": {"input": 0.80, "output": 4.00},
+    "claude-3-5-sonnet": {"input": 3.00, "output": 15.00},
+    "claude-3-5-haiku": {"input": 0.80, "output": 4.00},
+    "claude-3-opus": {"input": 15.00, "output": 75.00},
     # OpenAI models
-    "gpt-4o":            {"input":  2.50, "output": 10.00},
-    "gpt-4o-mini":       {"input":  0.15, "output":  0.60},
-    "gpt-4-turbo":       {"input": 10.00, "output": 30.00},
-    "o1":                {"input": 15.00, "output": 60.00},
-    "o3-mini":           {"input":  1.10, "output":  4.40},
+    "gpt-4o": {"input": 2.50, "output": 10.00},
+    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
+    "gpt-4-turbo": {"input": 10.00, "output": 30.00},
+    "o1": {"input": 15.00, "output": 60.00},
+    "o3-mini": {"input": 1.10, "output": 4.40},
 }
 
 # ── Heuristic multipliers ──────────────────────────────────────────────────
@@ -55,30 +54,31 @@ _PRICING: dict[str, dict[str, float]] = {
 # output; "implement" is the big one (full code); "verify" is brief.
 
 _OUTPUT_MULTIPLIERS: dict[str, float] = {
-    "design":    3.0,   # architecture doc ~3x the input prompt
-    "implement": 6.0,   # full code + manifest is largest output
-    "verify":    1.5,   # concise verdict against evidence
+    "design": 3.0,  # architecture doc ~3x the input prompt
+    "implement": 6.0,  # full code + manifest is largest output
+    "verify": 1.5,  # concise verdict against evidence
 }
 
 # ── Tier definitions ───────────────────────────────────────────────────────
 
+
 class TierName(str, Enum):
     PREMIUM = "premium"
-    MVP     = "mvp"
+    MVP = "mvp"
 
 
 # Per-stage max_tokens multiplier relative to the model hard limit.
 # Premium uses the full config budget; MVP caps each stage lower.
 _TIER_STAGE_CAPS: dict[TierName, dict[str, float]] = {
     TierName.PREMIUM: {
-        "design":    1.0,   # full budget
+        "design": 1.0,  # full budget
         "implement": 1.0,
-        "verify":    1.0,
+        "verify": 1.0,
     },
     TierName.MVP: {
-        "design":    0.25,  # 25% of budget — concise architecture
+        "design": 0.25,  # 25% of budget — concise architecture
         "implement": 0.40,  # 40% — leaner code, fewer files
-        "verify":    0.25,  # 25% — brief verdict
+        "verify": 0.25,  # 25% — brief verdict
     },
 }
 
@@ -86,7 +86,7 @@ _TIER_DESCRIPTIONS: dict[TierName, dict] = {
     TierName.PREMIUM: {
         "label": "Premium (Optimized)",
         "summary": "Full-detail architecture, comprehensive implementation with "
-                   "tests/docs/configs, and thorough verification report.",
+        "tests/docs/configs, and thorough verification report.",
         "includes": [
             "Detailed architecture with rationale and alternatives considered",
             "Complete implementation with error handling, logging, and edge cases",
@@ -97,7 +97,7 @@ _TIER_DESCRIPTIONS: dict[TierName, dict] = {
     TierName.MVP: {
         "label": "MVP (Minimum Viable)",
         "summary": "Lean architecture, core implementation only, and concise "
-                   "pass/fail verification.",
+        "pass/fail verification.",
         "includes": [
             "Concise architecture — one clear approach, minimal rationale",
             "Core implementation — happy-path logic, basic structure",
@@ -116,6 +116,7 @@ _TIER_DESCRIPTIONS: dict[TierName, dict] = {
 
 # ── Data classes ───────────────────────────────────────────────────────────
 
+
 @dataclass
 class StageEstimate:
     stage: str
@@ -124,8 +125,8 @@ class StageEstimate:
     output_tokens_mvp: int
     model: str
     uses_llm: bool = True
-    chunked: bool = False         # True when implement auto-chunks
-    estimated_chunks: int = 1     # number of LLM calls for this stage
+    chunked: bool = False  # True when implement auto-chunks
+    estimated_chunks: int = 1  # number of LLM calls for this stage
 
     @property
     def total_premium(self) -> int:
@@ -159,8 +160,7 @@ class RunEstimate:
         # Use the first LLM stage's model for pricing (they're usually the same)
         model = next((s.model for s in self.stages if s.uses_llm), "")
         pricing = _resolve_pricing(model)
-        return (total_in / 1_000_000 * pricing["input"]
-                + total_out / 1_000_000 * pricing["output"])
+        return total_in / 1_000_000 * pricing["input"] + total_out / 1_000_000 * pricing["output"]
 
 
 @dataclass
@@ -171,6 +171,7 @@ class Tier:
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
+
 
 def _resolve_pricing(model: str) -> dict[str, float]:
     """Prefix-match model to pricing table, like llm_provider does for limits."""
@@ -201,6 +202,7 @@ def _read_if_exists(path: Path) -> str:
 
 # ── Core estimation ────────────────────────────────────────────────────────
 
+
 def estimate_run(project_dir: str | Path | None = None) -> RunEstimate:
     """Scan project inputs and estimate token usage per stage.
 
@@ -227,7 +229,7 @@ def estimate_run(project_dir: str | Path | None = None) -> RunEstimate:
     estimate = RunEstimate(provider=provider, config_max_tokens=budget)
 
     # Check for cached responses
-    cache_dir = state / "cache" / "llm"
+    _cache_dir = state / "cache" / "llm"  # noqa: F841 — planned for cache-aware cost estimation
     # (Cache detection is best-effort; we note it but still estimate full cost)
 
     # ── Design stage ────────────────────────────────────────────────────
@@ -239,20 +241,25 @@ def estimate_run(project_dir: str | Path | None = None) -> RunEstimate:
     design_hard_limit = get_model_limit(provider, design_model)
     design_mvp_budget = min(budget, design_hard_limit)
 
-    estimate.stages.append(StageEstimate(
-        stage="design",
-        input_tokens=design_input_tokens,
-        output_tokens_premium=min(
-            int(design_input_tokens * _OUTPUT_MULTIPLIERS["design"]),
-            design_hard_limit,  # Premium uses model's full capacity
-        ),
-        output_tokens_mvp=min(
-            int(design_input_tokens * _OUTPUT_MULTIPLIERS["design"]
-                * _TIER_STAGE_CAPS[TierName.MVP]["design"]),
-            int(design_mvp_budget * _TIER_STAGE_CAPS[TierName.MVP]["design"]),
-        ),
-        model=design_model,
-    ))
+    estimate.stages.append(
+        StageEstimate(
+            stage="design",
+            input_tokens=design_input_tokens,
+            output_tokens_premium=min(
+                int(design_input_tokens * _OUTPUT_MULTIPLIERS["design"]),
+                design_hard_limit,  # Premium uses model's full capacity
+            ),
+            output_tokens_mvp=min(
+                int(
+                    design_input_tokens
+                    * _OUTPUT_MULTIPLIERS["design"]
+                    * _TIER_STAGE_CAPS[TierName.MVP]["design"]
+                ),
+                int(design_mvp_budget * _TIER_STAGE_CAPS[TierName.MVP]["design"]),
+            ),
+            model=design_model,
+        )
+    )
 
     # ── Implement stage ─────────────────────────────────────────────────
     # At estimation time we don't have the architecture yet, so we
@@ -284,33 +291,37 @@ def estimate_run(project_dir: str | Path | None = None) -> RunEstimate:
         # Output: each chunk can produce up to hard_limit tokens
         total_premium_output = impl_hard_limit * est_chunks
         total_mvp_output = int(
-            impl_mvp_budget
-            * _TIER_STAGE_CAPS[TierName.MVP]["implement"]
-            * est_chunks
+            impl_mvp_budget * _TIER_STAGE_CAPS[TierName.MVP]["implement"] * est_chunks
         )
         logger.info(
             "Implement stage will chunk: ~%d components, est. %d premium output tokens",
-            est_chunks, total_premium_output,
+            est_chunks,
+            total_premium_output,
         )
     else:
         est_chunks = 1
         total_input = impl_input_tokens
         total_premium_output = min(raw_premium_output, impl_hard_limit)
         total_mvp_output = min(
-            int(impl_input_tokens * _OUTPUT_MULTIPLIERS["implement"]
-                * _TIER_STAGE_CAPS[TierName.MVP]["implement"]),
+            int(
+                impl_input_tokens
+                * _OUTPUT_MULTIPLIERS["implement"]
+                * _TIER_STAGE_CAPS[TierName.MVP]["implement"]
+            ),
             int(impl_mvp_budget * _TIER_STAGE_CAPS[TierName.MVP]["implement"]),
         )
 
-    estimate.stages.append(StageEstimate(
-        stage="implement",
-        input_tokens=total_input,
-        output_tokens_premium=total_premium_output,
-        output_tokens_mvp=total_mvp_output,
-        model=impl_model,
-        chunked=will_chunk,
-        estimated_chunks=est_chunks,
-    ))
+    estimate.stages.append(
+        StageEstimate(
+            stage="implement",
+            input_tokens=total_input,
+            output_tokens_premium=total_premium_output,
+            output_tokens_mvp=total_mvp_output,
+            model=impl_model,
+            chunked=will_chunk,
+            estimated_chunks=est_chunks,
+        )
+    )
 
     # ── Verify stage ────────────────────────────────────────────────────
     verify_model = _resolve_model(llm_cfg, "verify")
@@ -323,31 +334,38 @@ def estimate_run(project_dir: str | Path | None = None) -> RunEstimate:
     verify_hard_limit = get_model_limit(provider, verify_model)
     verify_mvp_budget = min(budget, verify_hard_limit)
 
-    estimate.stages.append(StageEstimate(
-        stage="verify",
-        input_tokens=verify_input_tokens,
-        output_tokens_premium=min(
-            int(verify_input_tokens * _OUTPUT_MULTIPLIERS["verify"]),
-            verify_hard_limit,  # Premium uses model's full capacity
-        ),
-        output_tokens_mvp=min(
-            int(verify_input_tokens * _OUTPUT_MULTIPLIERS["verify"]
-                * _TIER_STAGE_CAPS[TierName.MVP]["verify"]),
-            int(verify_mvp_budget * _TIER_STAGE_CAPS[TierName.MVP]["verify"]),
-        ),
-        model=verify_model,
-    ))
+    estimate.stages.append(
+        StageEstimate(
+            stage="verify",
+            input_tokens=verify_input_tokens,
+            output_tokens_premium=min(
+                int(verify_input_tokens * _OUTPUT_MULTIPLIERS["verify"]),
+                verify_hard_limit,  # Premium uses model's full capacity
+            ),
+            output_tokens_mvp=min(
+                int(
+                    verify_input_tokens
+                    * _OUTPUT_MULTIPLIERS["verify"]
+                    * _TIER_STAGE_CAPS[TierName.MVP]["verify"]
+                ),
+                int(verify_mvp_budget * _TIER_STAGE_CAPS[TierName.MVP]["verify"]),
+            ),
+            model=verify_model,
+        )
+    )
 
     # Non-LLM stages for completeness
     for stage_name in ("bootstrap", "extract", "test"):
-        estimate.stages.append(StageEstimate(
-            stage=stage_name,
-            input_tokens=0,
-            output_tokens_premium=0,
-            output_tokens_mvp=0,
-            model="",
-            uses_llm=False,
-        ))
+        estimate.stages.append(
+            StageEstimate(
+                stage=stage_name,
+                input_tokens=0,
+                output_tokens_premium=0,
+                output_tokens_mvp=0,
+                model="",
+                uses_llm=False,
+            )
+        )
 
     return estimate
 
@@ -396,6 +414,7 @@ def _resolve_model(llm_cfg: dict, stage: str) -> str:
 
 # ── Presentation ───────────────────────────────────────────────────────────
 
+
 def format_estimate(estimate: RunEstimate) -> str:
     """Return a human-readable cost comparison table."""
     tiers = build_tiers(estimate)
@@ -414,13 +433,11 @@ def format_estimate(estimate: RunEstimate) -> str:
 
     # Per-stage breakdown
     lines.append(f"  {'Stage':<14} {'Model':<30} {'Input Tokens':>13}")
-    lines.append(f"  {'-'*14} {'-'*30} {'-'*13}")
+    lines.append(f"  {'-' * 14} {'-' * 30} {'-' * 13}")
     for se in estimate.stages:
         if se.uses_llm:
             chunk_note = f"  ({se.estimated_chunks} chunks)" if se.chunked else ""
-            lines.append(
-                f"  {se.stage:<14} {se.model:<30} {se.input_tokens:>13,}{chunk_note}"
-            )
+            lines.append(f"  {se.stage:<14} {se.model:<30} {se.input_tokens:>13,}{chunk_note}")
     lines.append("")
 
     # Tier comparison
@@ -428,8 +445,12 @@ def format_estimate(estimate: RunEstimate) -> str:
     lines.append(f"  OPTION A: {desc_p['label']}")
     lines.append(f"  {desc_p['summary']}")
     lines.append("")
-    lines.append(f"    Estimated output tokens:  {estimate.total_output_tokens(TierName.PREMIUM):>10,}")
-    lines.append(f"    Estimated total tokens:   {estimate.total_input_tokens + estimate.total_output_tokens(TierName.PREMIUM):>10,}")
+    lines.append(
+        f"    Estimated output tokens:  {estimate.total_output_tokens(TierName.PREMIUM):>10,}"
+    )
+    lines.append(
+        f"    Estimated total tokens:   {estimate.total_input_tokens + estimate.total_output_tokens(TierName.PREMIUM):>10,}"
+    )
     lines.append(f"    Estimated cost:           ${premium.estimated_cost_usd:>9.4f}")
     lines.append("")
     lines.append("    Includes:")
@@ -442,7 +463,9 @@ def format_estimate(estimate: RunEstimate) -> str:
     lines.append(f"  {desc_m['summary']}")
     lines.append("")
     lines.append(f"    Estimated output tokens:  {estimate.total_output_tokens(TierName.MVP):>10,}")
-    lines.append(f"    Estimated total tokens:   {estimate.total_input_tokens + estimate.total_output_tokens(TierName.MVP):>10,}")
+    lines.append(
+        f"    Estimated total tokens:   {estimate.total_input_tokens + estimate.total_output_tokens(TierName.MVP):>10,}"
+    )
     lines.append(f"    Estimated cost:           ${mvp.estimated_cost_usd:>9.4f}")
     lines.append("")
     lines.append("    Includes:")

@@ -21,7 +21,6 @@ from dashboard.theme import (
     BG_SURFACE,
     FONT_BODY,
     FONT_SMALL,
-    INFO,
     PRIMARY,
     RADIUS,
     RADIUS_LG,
@@ -33,6 +32,7 @@ from dashboard.theme import (
 
 
 # ── Cost-estimate UI helpers ────────────────────────────────────────────────
+
 
 def _load_estimate(project_dir):
     """Run the heuristic estimator and cache in session state."""
@@ -69,10 +69,10 @@ def _render_tier_card(tier_name, tiers, estimate, descriptions):
                 <span style="background:{border_color}; color:white; padding:2px 10px;
                     border-radius:12px; font-size:11px; font-weight:600;">{badge}</span>
                 <span style="font-size:18px; font-weight:700; color:{TEXT_PRIMARY};">
-                    {desc['label']}</span>
+                    {desc["label"]}</span>
             </div>
             <div style="font-size:{FONT_BODY}; color:{TEXT_BODY}; margin-bottom:16px;">
-                {desc['summary']}</div>
+                {desc["summary"]}</div>
             <div style="display:flex; gap:24px; margin-bottom:8px;">
                 <div>
                     <div style="font-size:{FONT_SMALL}; color:{TEXT_MUTED}; text-transform:uppercase;">
@@ -113,8 +113,7 @@ def _render_cost_estimate(project_dir):
     savings_pct = 0
     if premium.estimated_cost_usd > 0:
         savings_pct = (
-            (premium.estimated_cost_usd - mvp.estimated_cost_usd)
-            / premium.estimated_cost_usd * 100
+            (premium.estimated_cost_usd - mvp.estimated_cost_usd) / premium.estimated_cost_usd * 100
         )
 
     st.markdown(
@@ -183,6 +182,7 @@ def _render_cost_estimate(project_dir):
 
 # ── Completion status (evidence-based) ───────────────────────────────────────
 
+
 def _render_completion_status(project_dir):
     """Show pipeline completion status based on actual test evidence."""
     run_id = get_latest_run_id(project_dir)
@@ -209,7 +209,9 @@ def _render_completion_status(project_dir):
     if failed == 0:
         st.success(f"Pipeline completed — all {passed} check(s) passed.")
     else:
-        st.error(f"Pipeline completed with failures — {failed} of {len(real_checks)} check(s) failed.")
+        st.error(
+            f"Pipeline completed with failures — {failed} of {len(real_checks)} check(s) failed."
+        )
 
     with st.expander("Test Evidence Details", expanded=failed > 0):
         for r in real_checks:
@@ -232,10 +234,13 @@ def _render_completion_status(project_dir):
         if compliance:
             stdout = compliance.get("stdout", "")
             if "FAIL" in stdout:
-                st.warning("Contract compliance issues detected — output does not fully match the design contract.")
+                st.warning(
+                    "Contract compliance issues detected — output does not fully match the design contract."
+                )
 
 
 # ── Main page render ────────────────────────────────────────────────────────
+
 
 def render(project_dir):
     st.title("Run Pipeline")
@@ -253,9 +258,7 @@ def render(project_dir):
 
     intake_ok = is_intake_complete(project_dir)
     if not intake_ok:
-        st.warning(
-            "Intake is incomplete. Create a project first before running the pipeline."
-        )
+        st.warning("Intake is incomplete. Create a project first before running the pipeline.")
 
     proc = st.session_state.get("pipeline_process")
     is_running = proc is not None and proc.poll() is None
@@ -266,9 +269,13 @@ def render(project_dir):
         if selected:
             process = subprocess.Popen(
                 [
-                    sys.executable, "-m", "dashboard.pipeline_runner",
-                    "--project-dir", str(project_dir),
-                    "--tier", selected,
+                    sys.executable,
+                    "-m",
+                    "dashboard.pipeline_runner",
+                    "--project-dir",
+                    str(project_dir),
+                    "--tier",
+                    selected,
                 ],
                 cwd=str(project_dir)
                 if (project_dir / "dashboard").is_dir()

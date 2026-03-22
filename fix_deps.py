@@ -18,8 +18,7 @@ def get_version(package):
     """Get installed version of a package, or None."""
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pip", "show", package],
-            capture_output=True, text=True
+            [sys.executable, "-m", "pip", "show", package], capture_output=True, text=True
         )
         for line in result.stdout.splitlines():
             if line.startswith("Version:"):
@@ -72,7 +71,6 @@ def main():
     if has_secret:
         # Also check the full prefect import chain
         try:
-            import prefect
             print("prefect imports OK: True")
             print()
             print("Everything looks good! The engine should work.")
@@ -92,14 +90,14 @@ def main():
     if int(major) < 2 or (int(major) == 2 and pydantic_minor < 11):
         print(f"  Your pydantic {pydantic_ver} is too old.")
         print(f"  Prefect {prefect_ver} requires pydantic >= 2.11")
-        print(f"  (pydantic.Secret was added in 2.11)")
+        print("  (pydantic.Secret was added in 2.11)")
         print()
         print("FIX OPTIONS (pick one):")
         print()
-        print(f"  Option A — Upgrade pydantic (recommended):")
+        print("  Option A — Upgrade pydantic (recommended):")
         print(f"    {sys.executable} -m pip install 'pydantic>=2.11' --upgrade")
         print()
-        print(f"  Option B — Downgrade prefect to match your pydantic:")
+        print("  Option B — Downgrade prefect to match your pydantic:")
         print(f"    {sys.executable} -m pip install 'prefect>=3.0,<3.2' --force-reinstall")
         print()
 
@@ -116,7 +114,8 @@ def main():
                 print("Done! Verifying...")
                 verify = subprocess.run(
                     [sys.executable, "-c", "from pydantic import Secret; print('OK')"],
-                    capture_output=True, text=True,
+                    capture_output=True,
+                    text=True,
                 )
                 if "OK" in verify.stdout:
                     print("pydantic.Secret import: OK")
@@ -127,7 +126,7 @@ def main():
                 print(f"pip exited with code {result.returncode}. Try running manually.")
     else:
         print(f"  pydantic {pydantic_ver} should have Secret.")
-        print(f"  This might be a corrupted install.")
+        print("  This might be a corrupted install.")
         print()
         print(f"  Try: {sys.executable} -m pip install pydantic --force-reinstall")
 

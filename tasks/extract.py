@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 _MAX_FILES_MVP = 80
 _MAX_FILES_PREMIUM = 250
-_MAX_TOTAL_BYTES_MVP = 750_000        # ~750 KB of source code
+_MAX_TOTAL_BYTES_MVP = 750_000  # ~750 KB of source code
 _MAX_TOTAL_BYTES_PREMIUM = 5_000_000  # ~5 MB
 
 
@@ -139,13 +139,10 @@ def _check_extraction_limits(manifest: FileManifest) -> None:
 
     violations: list[str] = []
     if file_count > max_files:
-        violations.append(
-            f"File count ({file_count}) exceeds {tier_label} limit of {max_files}"
-        )
+        violations.append(f"File count ({file_count}) exceeds {tier_label} limit of {max_files}")
     if total_bytes > max_bytes:
         violations.append(
-            f"Total size ({total_bytes:,} bytes) exceeds {tier_label} "
-            f"limit of {max_bytes:,} bytes"
+            f"Total size ({total_bytes:,} bytes) exceeds {tier_label} limit of {max_bytes:,} bytes"
         )
 
     if violations:
@@ -171,8 +168,11 @@ def _check_extraction_limits(manifest: FileManifest) -> None:
     logger.info(
         "Extraction limits check passed (%s tier): %d files, %s bytes "
         "(limits: %d files, %s bytes).",
-        tier_label, file_count, f"{total_bytes:,}",
-        max_files, f"{max_bytes:,}",
+        tier_label,
+        file_count,
+        f"{total_bytes:,}",
+        max_files,
+        f"{max_bytes:,}",
     )
 
 
@@ -255,9 +255,7 @@ def _sanitize_requirements(project_dir: Path) -> None:
 
         # Relax exact pins: cryptography==41.0.8 → cryptography~=41.0
         # This uses "compatible release" — allows 41.0.x but not 42.x
-        pin_match = re.match(
-            r"^([A-Za-z0-9_.-]+)==(\d+)\.(\d+)\.(\d+)(.*)", line
-        )
+        pin_match = re.match(r"^([A-Za-z0-9_.-]+)==(\d+)\.(\d+)\.(\d+)(.*)", line)
         if pin_match:
             pkg, major, minor, _patch, extras = pin_match.groups()
             sanitized.append(f"{pkg}~={major}.{minor}{extras}")

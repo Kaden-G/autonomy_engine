@@ -13,7 +13,6 @@ from dashboard.data_loader import (
     load_evidence,
     load_project_spec,
 )
-from dashboard.theme import TEXT_BODY, TEXT_MUTED, TEXT_PRIMARY
 
 
 def render(project_dir):

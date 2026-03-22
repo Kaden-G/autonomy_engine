@@ -135,6 +135,7 @@ class TestExtractEvidenceVerifyPipeline:
         prompt_template = (get_prompts_dir() / "verify.txt").read_text()
         prompt = prompt_template.format(
             evidence=evidence_text,
+            structural_analysis="No structural issues detected — all checks passed.",
             acceptance_criteria=acceptance,
             requirements=requirements,
         )

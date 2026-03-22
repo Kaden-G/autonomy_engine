@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Feature:
     """A single functional requirement, with priority."""
+
     description: str
     priority: str = "required"  # "required" | "nice_to_have" | "excluded"
 
@@ -38,9 +39,10 @@ class Feature:
 @dataclass
 class TechChoice:
     """A technology choice — either locked or ambiguous."""
-    category: str       # e.g. "frontend", "storage", "backend"
-    raw: str            # original text from spec
-    locked: str | None = None      # resolved choice (if locked)
+
+    category: str  # e.g. "frontend", "storage", "backend"
+    raw: str  # original text from spec
+    locked: str | None = None  # resolved choice (if locked)
     alternatives: list[str] = field(default_factory=list)  # if ambiguous
     is_ambiguous: bool = False
 
@@ -57,6 +59,7 @@ class TechChoice:
 @dataclass
 class NormalizedSpec:
     """The project spec, parsed into unambiguous structured fields."""
+
     project_name: str
     project_description: str
     features: list[Feature]
@@ -117,7 +120,7 @@ class NormalizedSpec:
                 lines.append(
                     f"- **{t.category}**: Choose ONE of: "
                     + " | ".join(t.alternatives)
-                    + f" (original: \"{t.raw}\")"
+                    + f' (original: "{t.raw}")'
                 )
 
         # ── Constraints ──
@@ -160,6 +163,7 @@ def _detect_ambiguity(text: str) -> tuple[bool, list[str]]:
 
 
 # ── Main normalization ──────────────────────────────────────────────────────
+
 
 def normalize_spec(spec_path: Path) -> NormalizedSpec:
     """Parse the project_spec.yml and produce a NormalizedSpec.
@@ -212,8 +216,7 @@ def normalize_spec(spec_path: Path) -> NormalizedSpec:
         tech_choices.append(tc)
         if is_ambiguous:
             ambiguities.append(
-                f"Tech choice for '{cat}' is ambiguous: \"{entry}\" "
-                f"(alternatives: {alternatives})"
+                f"Tech choice for '{cat}' is ambiguous: \"{entry}\" (alternatives: {alternatives})"
             )
 
     # ── Performance + security constraints (split from constraints) ──

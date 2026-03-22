@@ -1,7 +1,5 @@
 """Tests for the structural issue classification in the verify task."""
 
-import pytest
-
 from tasks.verify import _classify_issues, _build_deterministic_verification
 
 
@@ -34,7 +32,9 @@ class TestClassifyIssues:
 
     def test_typecheck_failure_classified(self):
         evidence = [
-            _make_record("typecheck", 1, stdout="src/foo.ts(10,5): error TS2339: Property 'x' does not exist"),
+            _make_record(
+                "typecheck", 1, stdout="src/foo.ts(10,5): error TS2339: Property 'x' does not exist"
+            ),
         ]
         issues = _classify_issues(evidence)
         assert "type_errors" in issues
@@ -73,7 +73,8 @@ class TestClassifyIssues:
     def test_contract_compliance_failure(self):
         evidence = [
             _make_record(
-                "contract-compliance", 1,
+                "contract-compliance",
+                1,
                 stdout="Contract compliance: FAIL\n\n[ERROR] [Core] Missing src/types.ts\n[WARN] [project] Extra file",
             ),
         ]

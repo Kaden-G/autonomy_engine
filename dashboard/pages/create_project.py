@@ -4,7 +4,6 @@ Also includes project management: load a previous project's spec into
 the form, or clear all fields to start fresh.
 """
 
-import yaml
 import streamlit as st
 from pydantic import ValidationError
 
@@ -13,18 +12,6 @@ from intake.renderer import render_all
 from intake.schema import Constraints, Domain, Outputs, ProjectInfo, ProjectSpec, Requirements
 
 from dashboard.data_loader import get_state_dir, list_runs, load_project_spec
-from dashboard.theme import (
-    BG_SURFACE,
-    BORDER,
-    FONT_BODY,
-    FONT_SMALL,
-    MUTED,
-    PRIMARY,
-    RADIUS,
-    TEXT_BODY,
-    TEXT_MUTED,
-    TEXT_PRIMARY,
-)
 
 # Keys for all form fields stored in session_state
 _FIELDS = {
@@ -86,6 +73,7 @@ def render(project_dir):
     st.title("Create Project")
 
     from dashboard.components.page_header import render_page_description
+
     render_page_description(
         "Define what you want to build. Fill in the form below — "
         "required fields are marked with *. "
@@ -108,10 +96,7 @@ def render(project_dir):
     if current_spec:
         project_name = current_spec.get("project", {}).get("name", "Unknown")
         run_count = len(runs)
-        st.markdown(
-            f"**Active project:** {project_name} · "
-            f"{run_count} run(s) on record"
-        )
+        st.markdown(f"**Active project:** {project_name} · {run_count} run(s) on record")
 
         # Where are built artifacts?
         build_dir = state_dir / "build"
@@ -151,8 +136,7 @@ def render(project_dir):
                 evidence_count = run.get("evidence_count", 0)
 
                 st.markdown(
-                    f"`{run_id[:12]}…` · {started} · {stages} · "
-                    f"{evidence_count} evidence records"
+                    f"`{run_id[:12]}…` · {started} · {stages} · {evidence_count} evidence records"
                 )
 
     st.divider()

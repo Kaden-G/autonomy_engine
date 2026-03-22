@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from engine.spec_normalizer import Feature, NormalizedSpec, TechChoice, normalize_spec
+from engine.spec_normalizer import normalize_spec
 
 
 @pytest.fixture
@@ -22,7 +22,9 @@ def _write_spec(spec_dir: Path, content: str) -> Path:
 
 class TestNormalizeSpec:
     def test_basic_parsing(self, spec_dir):
-        path = _write_spec(spec_dir, """\
+        path = _write_spec(
+            spec_dir,
+            """\
             project:
               name: my-app
               description: A test app
@@ -42,7 +44,8 @@ class TestNormalizeSpec:
               - Multi-user support
             acceptance_criteria:
               - User can create and view entries
-        """)
+        """,
+        )
 
         spec = normalize_spec(path)
         assert spec.project_name == "my-app"
@@ -55,7 +58,9 @@ class TestNormalizeSpec:
         assert len(spec.acceptance_criteria) == 1
 
     def test_detects_ambiguous_or_choice(self, spec_dir):
-        path = _write_spec(spec_dir, """\
+        path = _write_spec(
+            spec_dir,
+            """\
             project:
               name: test
               description: test
@@ -67,7 +72,8 @@ class TestNormalizeSpec:
                 - "frontend: React or Next.js"
             non_goals: []
             acceptance_criteria: []
-        """)
+        """,
+        )
 
         spec = normalize_spec(path)
         assert spec.tech_stack[0].is_ambiguous
@@ -76,7 +82,9 @@ class TestNormalizeSpec:
         assert len(spec.ambiguities) == 1
 
     def test_detects_slash_alternatives(self, spec_dir):
-        path = _write_spec(spec_dir, """\
+        path = _write_spec(
+            spec_dir,
+            """\
             project:
               name: test
               description: test
@@ -88,7 +96,8 @@ class TestNormalizeSpec:
                 - "storage: SQLite / IndexedDB"
             non_goals: []
             acceptance_criteria: []
-        """)
+        """,
+        )
 
         spec = normalize_spec(path)
         assert spec.tech_stack[0].is_ambiguous
@@ -96,7 +105,9 @@ class TestNormalizeSpec:
         assert "IndexedDB" in spec.tech_stack[0].alternatives
 
     def test_optional_features_get_nice_to_have_priority(self, spec_dir):
-        path = _write_spec(spec_dir, """\
+        path = _write_spec(
+            spec_dir,
+            """\
             project:
               name: test
               description: test
@@ -108,14 +119,17 @@ class TestNormalizeSpec:
               tech_stack: []
             non_goals: []
             acceptance_criteria: []
-        """)
+        """,
+        )
 
         spec = normalize_spec(path)
         assert spec.features[0].priority == "required"
         assert spec.features[1].priority == "nice_to_have"
 
     def test_performance_constraints_split_by_sentence(self, spec_dir):
-        path = _write_spec(spec_dir, """\
+        path = _write_spec(
+            spec_dir,
+            """\
             project:
               name: test
               description: test
@@ -126,13 +140,16 @@ class TestNormalizeSpec:
               performance: Search in 200ms. Load in 2s. Save in 100ms.
             non_goals: []
             acceptance_criteria: []
-        """)
+        """,
+        )
 
         spec = normalize_spec(path)
         assert len(spec.performance_constraints) == 3
 
     def test_design_context_output(self, spec_dir):
-        path = _write_spec(spec_dir, """\
+        path = _write_spec(
+            spec_dir,
+            """\
             project:
               name: my-app
               description: test
@@ -148,7 +165,8 @@ class TestNormalizeSpec:
               security: Encrypt data.
             non_goals: []
             acceptance_criteria: []
-        """)
+        """,
+        )
 
         spec = normalize_spec(path)
         ctx = spec.to_design_context()
@@ -160,7 +178,9 @@ class TestNormalizeSpec:
         assert "SQLite" in ctx
 
     def test_no_ambiguity_when_all_locked(self, spec_dir):
-        path = _write_spec(spec_dir, """\
+        path = _write_spec(
+            spec_dir,
+            """\
             project:
               name: test
               description: test
@@ -173,7 +193,8 @@ class TestNormalizeSpec:
                 - "bundler: Vite 4"
             non_goals: []
             acceptance_criteria: []
-        """)
+        """,
+        )
 
         spec = normalize_spec(path)
         assert len(spec.ambiguities) == 0

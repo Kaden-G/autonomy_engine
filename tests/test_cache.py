@@ -79,6 +79,8 @@ class TestDesignTaskUsesCache:
         mock_provider.provider = "claude"
         mock_provider.max_tokens = 16384
         mock_provider.generate.return_value = "Generated architecture"
+        # Prevent MagicMock from leaking into JSON-serialized trace entries
+        mock_provider.total_usage = {"input_tokens": 0, "output_tokens": 0, "llm_calls": 1}
 
         with patch("tasks.design.get_provider", return_value=mock_provider):
             from tasks.design import design_system

@@ -297,6 +297,7 @@ class TestVerifyIntegrity:
         """Even if an attacker recomputes all hashes, they can't forge valid HMACs
         without the key. This is the critical improvement over plain SHA-256."""
         import hashlib
+
         run_id = init_run()
         trace(task="a", inputs=[], outputs=[])
         trace(task="b", inputs=[], outputs=[])
@@ -304,7 +305,7 @@ class TestVerifyIntegrity:
         trace_file = tmp_path / "state" / "runs" / run_id / "trace.jsonl"
         lines = trace_file.read_text().strip().splitlines()
         entry = json.loads(lines[0])
-        stored_hash = entry.pop("entry_hash")
+        entry.pop("entry_hash")  # Remove so attacker must recompute
         entry["task"] = "TAMPERED"
         # Attacker uses plain SHA-256 (no key) to compute new hash
         fake_hash = hashlib.sha256(

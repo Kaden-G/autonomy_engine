@@ -2,7 +2,6 @@
 
 import json
 
-import pytest
 
 from engine.evidence import auto_detect_checks
 
@@ -171,10 +170,7 @@ class TestPythonAutoDetect:
 
     def test_full_python_project(self, tmp_path):
         (tmp_path / "pyproject.toml").write_text(
-            "[project]\nname = 'myapp'\n"
-            "[tool.pytest.ini_options]\n"
-            "[tool.ruff]\n"
-            "[tool.mypy]\n"
+            "[project]\nname = 'myapp'\n[tool.pytest.ini_options]\n[tool.ruff]\n[tool.mypy]\n"
         )
         checks = auto_detect_checks(tmp_path)
         names = [c["name"] for c in checks]

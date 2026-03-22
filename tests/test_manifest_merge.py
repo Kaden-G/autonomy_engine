@@ -2,7 +2,6 @@
 
 import json
 
-import pytest
 
 from tasks.implement import _merge_manifests
 
@@ -71,9 +70,7 @@ class TestDuplicateDetection:
     def test_conflict_records_both_chunks(self):
         m1 = _manifest(("shared.ts", "v1"))
         m2 = _manifest(("shared.ts", "v2"))
-        _, conflicts = _merge_manifests(
-            [m1, m2], component_names=["Core Types", "Database"]
-        )
+        _, conflicts = _merge_manifests([m1, m2], component_names=["Core Types", "Database"])
         assert conflicts[0]["chunks"] == ["Core Types", "Database"]
         assert conflicts[0]["winner"] == "Database"
 
@@ -81,9 +78,7 @@ class TestDuplicateDetection:
         m1 = _manifest(("utils.ts", "v1"))
         m2 = _manifest(("utils.ts", "v2"))
         m3 = _manifest(("utils.ts", "v3"))
-        merged_json, conflicts = _merge_manifests(
-            [m1, m2, m3], component_names=["A", "B", "C"]
-        )
+        merged_json, conflicts = _merge_manifests([m1, m2, m3], component_names=["A", "B", "C"])
         assert len(conflicts) == 1
         assert conflicts[0]["chunks"] == ["A", "B", "C"]
         assert conflicts[0]["winner"] == "C"
@@ -121,9 +116,7 @@ class TestComponentNames:
     def test_custom_names_in_conflict(self):
         m1 = _manifest(("x.ts", "v1"))
         m2 = _manifest(("x.ts", "v2"))
-        _, conflicts = _merge_manifests(
-            [m1, m2], component_names=["Auth Module", "API Layer"]
-        )
+        _, conflicts = _merge_manifests([m1, m2], component_names=["Auth Module", "API Layer"])
         assert conflicts[0]["chunks"] == ["Auth Module", "API Layer"]
 
 

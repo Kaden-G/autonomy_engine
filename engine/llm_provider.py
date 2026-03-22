@@ -31,21 +31,21 @@ logger = logging.getLogger(__name__)
 # like "claude-sonnet-4-20250514".  More-specific entries win.
 
 _CLAUDE_MODEL_LIMITS: dict[str, int] = {
-    "claude-opus-4":      32_000,
-    "claude-sonnet-4":    64_000,
-    "claude-haiku-4":     16_000,
+    "claude-opus-4": 32_000,
+    "claude-sonnet-4": 64_000,
+    "claude-haiku-4": 16_000,
     # Legacy models
-    "claude-3-5-sonnet":  8_192,
-    "claude-3-5-haiku":   8_192,
-    "claude-3-opus":      4_096,
+    "claude-3-5-sonnet": 8_192,
+    "claude-3-5-haiku": 8_192,
+    "claude-3-opus": 4_096,
 }
 
 _OPENAI_MODEL_LIMITS: dict[str, int] = {
-    "gpt-4o":             16_384,
-    "gpt-4o-mini":        16_384,
-    "gpt-4-turbo":        4_096,
-    "o1":                 100_000,
-    "o3-mini":            100_000,
+    "gpt-4o": 16_384,
+    "gpt-4o-mini": 16_384,
+    "gpt-4-turbo": 4_096,
+    "o1": 100_000,
+    "o3-mini": 100_000,
 }
 
 _PROVIDER_LIMITS: dict[str, dict[str, int]] = {
@@ -89,7 +89,9 @@ def get_model_limit(provider: str, model: str) -> int:
 
     logger.warning(
         "No known token limit for %s model '%s' — using safe default of %d",
-        provider, model, _SAFE_DEFAULT,
+        provider,
+        model,
+        _SAFE_DEFAULT,
     )
     return _SAFE_DEFAULT
 
@@ -110,7 +112,11 @@ def resolve_max_tokens(
         logger.warning(
             "Requested max_tokens (%d) exceeds %s limit for '%s' (%d) — "
             "clamping to %d.  Update config.yml if this is unexpected.",
-            requested, provider, model, hard_limit, hard_limit,
+            requested,
+            provider,
+            model,
+            hard_limit,
+            hard_limit,
         )
         return hard_limit
 
@@ -194,14 +200,15 @@ class ClaudeProvider(LLMProvider):
         self._record_usage(usage.input_tokens, usage.output_tokens)
         logger.info(
             "Token usage: %d input, %d output (budget: %d)",
-            usage.input_tokens, usage.output_tokens, self.max_tokens,
+            usage.input_tokens,
+            usage.output_tokens,
+            self.max_tokens,
         )
 
-        self.was_truncated = (final_message.stop_reason == "max_tokens")
+        self.was_truncated = final_message.stop_reason == "max_tokens"
         if self.was_truncated:
             logger.warning(
-                "Response truncated — hit max_tokens (%d). "
-                "Output may be incomplete.",
+                "Response truncated — hit max_tokens (%d). Output may be incomplete.",
                 self.max_tokens,
             )
         return "".join(text_parts)
@@ -242,11 +249,10 @@ class OpenAIProvider(LLMProvider):
                 self.max_tokens,
             )
 
-        self.was_truncated = (choice.finish_reason == "length")
+        self.was_truncated = choice.finish_reason == "length"
         if self.was_truncated:
             logger.warning(
-                "Response truncated — hit max_tokens (%d). "
-                "Output may be incomplete.",
+                "Response truncated — hit max_tokens (%d). Output may be incomplete.",
                 self.max_tokens,
             )
         return choice.message.content

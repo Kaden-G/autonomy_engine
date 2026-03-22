@@ -96,10 +96,19 @@ class TestBuildArtifactManifest:
 
 class TestCreateBundle:
     def _write_trace(self, run_dir):
-        """Write a single valid trace entry so integrity passes."""
+        """Write a single valid trace entry so integrity passes.
+
+        Must also write the HMAC key to the run dir so that
+        verify_trace_integrity() can load it during bundle creation.
+        """
+        import secrets
+
         tracer._run_id = run_dir.name
         tracer._prev_hash = GENESIS_HASH
         tracer._seq = 0
+        # Generate and persist an HMAC key — mirrors what init_run() does
+        tracer._hmac_key = secrets.token_bytes(32)
+        (run_dir / ".trace_key").write_bytes(tracer._hmac_key)
         tracer.trace(
             task="bootstrap",
             inputs=["inputs/spec.yml"],

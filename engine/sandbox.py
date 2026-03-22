@@ -133,10 +133,7 @@ def detect_project_type(workspace: Path) -> str:
     """
     if (workspace / "package.json").exists():
         return "node"
-    if any(
-        (workspace / f).exists()
-        for f in ("requirements.txt", "pyproject.toml", "setup.py")
-    ):
+    if any((workspace / f).exists() for f in ("requirements.txt", "pyproject.toml", "setup.py")):
         return "python"
     return "unknown"
 
@@ -352,7 +349,9 @@ def create_sandbox(
 
 
 def _setup_node_sandbox(
-    workspace: Path, install_deps: bool, cfg: dict,
+    workspace: Path,
+    install_deps: bool,
+    cfg: dict,
 ) -> Sandbox:
     """Set up a Node.js sandbox — npm install in the workspace."""
     deps_installed = False
@@ -374,7 +373,9 @@ def _setup_node_sandbox(
 
 
 def _setup_python_sandbox(
-    workspace: Path, install_deps: bool, cfg: dict,
+    workspace: Path,
+    install_deps: bool,
+    cfg: dict,
 ) -> Sandbox:
     """Set up a Python sandbox — virtualenv + pip install."""
     venv_cache_hit = False

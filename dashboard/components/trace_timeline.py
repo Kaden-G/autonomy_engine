@@ -9,7 +9,6 @@ from dashboard.theme import (
     FONT_SMALL,
     RADIUS,
     STAGE_COLORS,
-    TEXT_BODY,
     TEXT_MUTED,
     TEXT_PRIMARY,
     chip,

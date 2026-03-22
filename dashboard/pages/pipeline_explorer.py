@@ -13,21 +13,16 @@ import streamlit as st
 
 from dashboard.theme import (
     BG_SURFACE,
-    BG_SURFACE_DARK,
     BORDER,
     FONT_BODY,
-    FONT_SMALL,
     INFO,
     MUTED,
-    PRIMARY,
     RADIUS,
-    RADIUS_LG,
     STAGE_COLORS,
     SUCCESS,
     TEXT_BODY,
     TEXT_MUTED,
     TEXT_PRIMARY,
-    WARNING,
     section_description,
 )
 
@@ -51,24 +46,37 @@ PIPELINE_STAGES = [
         ),
         "who": "You (human)",
         "inputs": [
-            ("Your idea", "A project description — what it does, who it's for, what's in and out of scope"),
+            (
+                "Your idea",
+                "A project description — what it does, who it's for, what's in and out of scope",
+            ),
         ],
         "outputs": [
-            ("project_spec.yml",
-             "Your requirements in a machine-readable format — the single source of truth for the entire pipeline",
-             "state/inputs/project_spec.yml"),
-            ("REQUIREMENTS.md",
-             "A human-friendly rendering of the functional and non-functional requirements",
-             "state/inputs/REQUIREMENTS.md"),
-            ("CONSTRAINTS.md",
-             "Technical constraints and boundaries — languages, frameworks, performance targets",
-             "state/inputs/CONSTRAINTS.md"),
-            ("NON_GOALS.md",
-             "Explicit non-goals so the AI knows where to stop — things that are deliberately out of scope",
-             "state/inputs/NON_GOALS.md"),
-            ("ACCEPTANCE_CRITERIA.md",
-             "Measurable criteria for deciding whether the generated project meets the spec",
-             "state/inputs/ACCEPTANCE_CRITERIA.md"),
+            (
+                "project_spec.yml",
+                "Your requirements in a machine-readable format — the single source of truth for the entire pipeline",
+                "state/inputs/project_spec.yml",
+            ),
+            (
+                "REQUIREMENTS.md",
+                "A human-friendly rendering of the functional and non-functional requirements",
+                "state/inputs/REQUIREMENTS.md",
+            ),
+            (
+                "CONSTRAINTS.md",
+                "Technical constraints and boundaries — languages, frameworks, performance targets",
+                "state/inputs/CONSTRAINTS.md",
+            ),
+            (
+                "NON_GOALS.md",
+                "Explicit non-goals so the AI knows where to stop — things that are deliberately out of scope",
+                "state/inputs/NON_GOALS.md",
+            ),
+            (
+                "ACCEPTANCE_CRITERIA.md",
+                "Measurable criteria for deciding whether the generated project meets the spec",
+                "state/inputs/ACCEPTANCE_CRITERIA.md",
+            ),
         ],
         "why": (
             "Without a structured spec, the AI would interpret your description "
@@ -91,18 +99,26 @@ PIPELINE_STAGES = [
             ("Intake artifacts", "The five files produced during intake — all must be present"),
         ],
         "outputs": [
-            ("Run folder",
-             "A unique directory for this pipeline execution — all subsequent outputs land here",
-             "state/runs/&lt;run-id&gt;/"),
-            ("trace.jsonl",
-             "The audit log — every subsequent action is recorded here with a tamper-evident HMAC signature",
-             "state/runs/&lt;run-id&gt;/trace.jsonl"),
-            ("config_snapshot.yml",
-             "A frozen copy of the engine configuration at the moment the run started",
-             "state/runs/&lt;run-id&gt;/config_snapshot.yml"),
-            (".trace_key",
-             "A one-time cryptographic signing key for this run's audit chain (hidden file, not in the log)",
-             "state/runs/&lt;run-id&gt;/.trace_key"),
+            (
+                "Run folder",
+                "A unique directory for this pipeline execution — all subsequent outputs land here",
+                "state/runs/&lt;run-id&gt;/",
+            ),
+            (
+                "trace.jsonl",
+                "The audit log — every subsequent action is recorded here with a tamper-evident HMAC signature",
+                "state/runs/&lt;run-id&gt;/trace.jsonl",
+            ),
+            (
+                "config_snapshot.yml",
+                "A frozen copy of the engine configuration at the moment the run started",
+                "state/runs/&lt;run-id&gt;/config_snapshot.yml",
+            ),
+            (
+                ".trace_key",
+                "A one-time cryptographic signing key for this run's audit chain (hidden file, not in the log)",
+                "state/runs/&lt;run-id&gt;/.trace_key",
+            ),
         ],
         "why": (
             "Starting the audit trail here means even the earliest pipeline actions "
@@ -125,15 +141,21 @@ PIPELINE_STAGES = [
             ("Tier context", "Budget limits (MVP or Premium) that constrain the design's scope"),
         ],
         "outputs": [
-            ("ARCHITECTURE.md",
-             "A human-readable design document — system overview, component breakdown, data flow",
-             "state/designs/ARCHITECTURE.md"),
-            ("DESIGN_CONTRACT.json",
-             "The binding blueprint — exact file lists, shared data types, dependency maps, and per-component budgets",
-             "state/designs/DESIGN_CONTRACT.json"),
-            ("Decision record",
-             "If a human gate is configured, the approval or redirect decision is recorded in the audit trail",
-             "state/runs/&lt;run-id&gt;/decisions/design.json"),
+            (
+                "ARCHITECTURE.md",
+                "A human-readable design document — system overview, component breakdown, data flow",
+                "state/designs/ARCHITECTURE.md",
+            ),
+            (
+                "DESIGN_CONTRACT.json",
+                "The binding blueprint — exact file lists, shared data types, dependency maps, and per-component budgets",
+                "state/designs/DESIGN_CONTRACT.json",
+            ),
+            (
+                "Decision record",
+                "If a human gate is configured, the approval or redirect decision is recorded in the audit trail",
+                "state/runs/&lt;run-id&gt;/decisions/design.json",
+            ),
         ],
         "why": (
             "The design contract is the engine's primary defense against AI drift.  "
@@ -153,16 +175,26 @@ PIPELINE_STAGES = [
         ),
         "who": "AI (contract-guided)",
         "inputs": [
-            ("DESIGN_CONTRACT.json", "The binding blueprint — tells the AI exactly which files to produce and how they relate"),
-            ("Canonical types", "Shared data structures injected verbatim into each chunk prompt, preventing the AI from inventing conflicting versions"),
+            (
+                "DESIGN_CONTRACT.json",
+                "The binding blueprint — tells the AI exactly which files to produce and how they relate",
+            ),
+            (
+                "Canonical types",
+                "Shared data structures injected verbatim into each chunk prompt, preventing the AI from inventing conflicting versions",
+            ),
         ],
         "outputs": [
-            ("Raw AI output",
-             "The full text response from the AI, containing fenced code blocks with file paths",
-             "state/implementations/"),
-            ("Token usage",
-             "Actual tokens consumed vs. the pre-run estimate — tracked per stage for cost visibility",
-             "Logged in trace.jsonl"),
+            (
+                "Raw AI output",
+                "The full text response from the AI, containing fenced code blocks with file paths",
+                "state/implementations/",
+            ),
+            (
+                "Token usage",
+                "Actual tokens consumed vs. the pre-run estimate — tracked per stage for cost visibility",
+                "Logged in trace.jsonl",
+            ),
         ],
         "why": (
             "Chunk-by-chunk generation with contract injection is what makes large projects "
@@ -185,15 +217,21 @@ PIPELINE_STAGES = [
             ("Raw AI output", "The text containing fenced code blocks with file path headers"),
         ],
         "outputs": [
-            ("Project folder",
-             "A complete, standalone directory with all generated source files — sibling to the engine directory",
-             "../&lt;project-name&gt;/"),
-            ("MANIFEST.md",
-             "An inventory of every extracted file — name, size, and line count",
-             "state/build/MANIFEST.md"),
-            ("Circuit breaker log",
-             "If the output exceeded safety limits (80 files / 750 KB for MVP, 250 files / 5 MB for Premium), extraction halts and logs why",
-             "Logged in trace.jsonl"),
+            (
+                "Project folder",
+                "A complete, standalone directory with all generated source files — sibling to the engine directory",
+                "../&lt;project-name&gt;/",
+            ),
+            (
+                "MANIFEST.md",
+                "An inventory of every extracted file — name, size, and line count",
+                "state/build/MANIFEST.md",
+            ),
+            (
+                "Circuit breaker log",
+                "If the output exceeded safety limits (80 files / 750 KB for MVP, 250 files / 5 MB for Premium), extraction halts and logs why",
+                "Logged in trace.jsonl",
+            ),
         ],
         "why": (
             "Path traversal protection happens here — the engine rejects any file path "
@@ -217,15 +255,21 @@ PIPELINE_STAGES = [
             ("DESIGN_CONTRACT.json", "Used for contract compliance verification"),
         ],
         "outputs": [
-            ("Evidence records",
-             "One structured JSON file per check — command run, exit code, full output, timestamps, and environment metadata",
-             "state/runs/&lt;run-id&gt;/evidence/"),
-            ("TEST_RESULTS.md",
-             "Human-readable summary of all check results — pass/fail per check with key output excerpts",
-             "state/tests/TEST_RESULTS.md"),
-            ("Contract compliance",
-             "Missing files, extra files, budget violations, and type integrity results",
-             "Included in evidence records"),
+            (
+                "Evidence records",
+                "One structured JSON file per check — command run, exit code, full output, timestamps, and environment metadata",
+                "state/runs/&lt;run-id&gt;/evidence/",
+            ),
+            (
+                "TEST_RESULTS.md",
+                "Human-readable summary of all check results — pass/fail per check with key output excerpts",
+                "state/tests/TEST_RESULTS.md",
+            ),
+            (
+                "Contract compliance",
+                "Missing files, extra files, budget violations, and type integrity results",
+                "Included in evidence records",
+            ),
         ],
         "why": (
             "Evidence records are the 'test receipts' — they provide objective, machine-readable "
@@ -245,18 +289,27 @@ PIPELINE_STAGES = [
         "who": "AI or rule-based",
         "inputs": [
             ("Evidence records", "All test results from the previous stage"),
-            ("Structural classification", "Failures categorized by type: imports, types, lint, build, tests, contract compliance"),
+            (
+                "Structural classification",
+                "Failures categorized by type: imports, types, lint, build, tests, contract compliance",
+            ),
         ],
         "outputs": [
-            ("VERIFICATION.md",
-             "The final verdict — ACCEPTED or REJECTED with rationale and per-category analysis",
-             "state/tests/VERIFICATION.md"),
-            ("Decision record",
-             "The go/no-go decision captured in the audit trail for this run",
-             "state/runs/&lt;run-id&gt;/decisions/verify.json"),
-            ("Audit bundle",
-             "A complete, exportable archive of the entire run — trace, evidence, decisions, config snapshot",
-             "Exportable via: python -m engine.report"),
+            (
+                "VERIFICATION.md",
+                "The final verdict — ACCEPTED or REJECTED with rationale and per-category analysis",
+                "state/tests/VERIFICATION.md",
+            ),
+            (
+                "Decision record",
+                "The go/no-go decision captured in the audit trail for this run",
+                "state/runs/&lt;run-id&gt;/decisions/verify.json",
+            ),
+            (
+                "Audit bundle",
+                "A complete, exportable archive of the entire run — trace, evidence, decisions, config snapshot",
+                "Exportable via: python -m engine.report",
+            ),
         ],
         "why": (
             "Three verification modes let you balance thoroughness against cost: "
@@ -271,7 +324,7 @@ def render(project_dir):
     """Render the Pipeline Explorer page."""
     st.markdown(
         f'<h1 style="font-size:28px; color:{TEXT_PRIMARY}; margin-bottom:4px;">'
-        f'🗺️ Pipeline Explorer</h1>',
+        f"🗺️ Pipeline Explorer</h1>",
         unsafe_allow_html=True,
     )
 
@@ -303,9 +356,9 @@ def _render_flow_overview():
     # Create columns: one per stage plus thin spacer columns for arrows
     col_spec = []
     for i in range(num_stages):
-        col_spec.append(1)           # stage node
+        col_spec.append(1)  # stage node
         if i < num_stages - 1:
-            col_spec.append(0.3)     # arrow spacer
+            col_spec.append(0.3)  # arrow spacer
 
     cols = st.columns(col_spec)
 
@@ -320,14 +373,14 @@ def _render_flow_overview():
                         background:{color}20; border:2px solid {color};
                         display:inline-flex; align-items:center; justify-content:center;
                         font-size:22px;
-                    ">{stage['icon']}</div>
+                    ">{stage["icon"]}</div>
                     <div style="
                         font-size:12px; font-weight:600; color:{TEXT_PRIMARY};
                         margin-top:6px;
-                    ">{stage['label']}</div>
+                    ">{stage["label"]}</div>
                     <div style="
                         font-size:10px; color:{TEXT_MUTED}; margin-top:2px;
-                    ">{stage['who']}</div>
+                    ">{stage["who"]}</div>
                 </div>""",
                 unsafe_allow_html=True,
             )
@@ -419,7 +472,7 @@ def _render_stage_card(stage: dict, index: int):
                     💡 WHY THIS MATTERS
                 </span>
                 <p style="font-size:13px; color:{TEXT_BODY}; margin-top:4px; margin-bottom:0; line-height:1.5;">
-                    {stage['why']}
+                    {stage["why"]}
                 </p>
             </div>""",
             unsafe_allow_html=True,

@@ -121,7 +121,7 @@ def _hash_artifact(rel_path: str, external_base: Path | None = None) -> str | No
     if rel_path.startswith("<external>:"):
         if external_base is None:
             return None
-        suffix = rel_path[len("<external>:"):]
+        suffix = rel_path[len("<external>:") :]
         full = external_base / suffix
     else:
         full = get_state_dir() / rel_path
@@ -239,9 +239,7 @@ def verify_trace_integrity(run_id: str | None = None) -> tuple[bool, list[str]]:
 
         # Check sequence continuity
         if entry.get("seq") != i:
-            errors.append(
-                f"Line {i}: seq mismatch (expected {i}, got {entry.get('seq')})"
-            )
+            errors.append(f"Line {i}: seq mismatch (expected {i}, got {entry.get('seq')})")
 
         # Check chain link
         if entry.get("prev_hash") != expected_prev:

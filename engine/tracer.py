@@ -22,6 +22,14 @@ Technical details:
     - Entries are stored as JSONL in ``state/runs/<run_id>/trace.jsonl``
     - The HMAC key lives in ``state/runs/<run_id>/.trace_key`` (owner-read-only)
     - HMAC-SHA256 with 256-bit per-run keys prevents chain recomputation attacks
+
+Thread safety:
+    All mutable per-run state (run_id, prev_hash, seq, hmac_key) is stored in
+    ``threading.local()`` so concurrent pipeline runs maintain independent
+    HMAC chains.  The module exposes backward-compatible ``_run_id``,
+    ``_prev_hash``, ``_seq``, and ``_hmac_key`` attributes via ``__getattr__``
+    and a ``_set()`` helper so existing tests that do ``tracer._run_id = None``
+    continue to work unchanged.
 """
 
 import hashlib
@@ -30,6 +38,8 @@ import json
 import os
 import secrets
 import shutil
+import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -41,12 +51,78 @@ from engine.context import get_config_path, get_state_dir
 GENESIS_HASH = "0" * 64  # Starting value for the chain (first entry has no predecessor)
 _KEY_FILENAME = ".trace_key"  # Hidden file storing the cryptographic signing key for this run
 
-# ── Module state (set once per run via init_run) ─────────────────────────────
+# ── Thread-local per-run state ───────────────────────────────────────────────
+# Each thread gets its own run_id / prev_hash / seq / hmac_key, so concurrent
+# pipeline runs maintain independent HMAC chains without locking.
 
-_run_id: str | None = None
-_prev_hash: str = GENESIS_HASH
-_seq: int = 0
-_hmac_key: bytes = b""
+_local = threading.local()
+
+# Default values for thread-local state (applied lazily on first access).
+_DEFAULTS = {
+    "run_id": None,
+    "prev_hash": GENESIS_HASH,
+    "seq": 0,
+    "hmac_key": b"",
+}
+
+
+def _get(name: str):
+    """Read a thread-local state value, initializing to default if absent."""
+    return getattr(_local, name, _DEFAULTS[name])
+
+
+def _set(name: str, value) -> None:
+    """Write a thread-local state value."""
+    setattr(_local, name, value)
+
+
+# ── Backward-compatible module-level attribute access ────────────────────────
+# Tests do ``tracer._run_id = None`` and ``assert tracer._seq == 0``.  Python
+# modules don't support __setattr__, so we install a thin module wrapper that
+# delegates ``_run_id``, ``_prev_hash``, ``_seq``, ``_hmac_key`` to thread-local
+# storage while passing everything else through normally.
+
+_THREAD_LOCAL_ATTRS = {
+    "_run_id": "run_id",
+    "_prev_hash": "prev_hash",
+    "_seq": "seq",
+    "_hmac_key": "hmac_key",
+}
+
+# Keep a reference to the real module so the wrapper can delegate attribute
+# access for everything that ISN'T thread-local state.
+_real_module = sys.modules[__name__]
+
+
+class _ModuleProxy:
+    """Thin wrapper that intercepts gets/sets of thread-local state attributes.
+
+    Everything else is delegated to the real module object, so imports,
+    function calls, and constant access work exactly as before.
+    """
+
+    def __getattr__(self, name: str):
+        local_name = _THREAD_LOCAL_ATTRS.get(name)
+        if local_name is not None:
+            return _get(local_name)
+        return getattr(_real_module, name)
+
+    def __setattr__(self, name: str, value):
+        local_name = _THREAD_LOCAL_ATTRS.get(name)
+        if local_name is not None:
+            _set(local_name, value)
+        else:
+            setattr(_real_module, name, value)
+
+    # Make sure pickling, repr, and module-level checks still work.
+    def __repr__(self):
+        return repr(_real_module)
+
+
+# Install the proxy as the module in sys.modules.  This is a well-known
+# Python pattern (used by e.g. werkzeug.local, lazy-importing libraries)
+# and is safe for production use.
+sys.modules[__name__] = _ModuleProxy()  # type: ignore[assignment]
 
 
 def init_run() -> str:
@@ -55,18 +131,19 @@ def init_run() -> str:
     Generates a cryptographic HMAC key for this run's trace integrity.
     Also snapshots ``config.yml`` into the run directory for reproducibility.
     """
-    global _run_id, _prev_hash, _seq, _hmac_key
-    _run_id = uuid4().hex[:12]
-    _prev_hash = GENESIS_HASH
-    _seq = 0
+    run_id = uuid4().hex[:12]
+    _set("run_id", run_id)
+    _set("prev_hash", GENESIS_HASH)
+    _set("seq", 0)
 
-    run_dir = get_state_dir() / "runs" / _run_id
+    run_dir = get_state_dir() / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate a unique signing key for this run's audit log (256-bit, cryptographically random)
-    _hmac_key = secrets.token_bytes(32)
+    hmac_key = secrets.token_bytes(32)
+    _set("hmac_key", hmac_key)
     key_path = run_dir / _KEY_FILENAME
-    key_path.write_bytes(_hmac_key)
+    key_path.write_bytes(hmac_key)
     try:
         os.chmod(key_path, 0o600)  # owner-read-write only
     except OSError:
@@ -77,14 +154,15 @@ def init_run() -> str:
     if config_path.exists():
         shutil.copy2(config_path, run_dir / "config_snapshot.yml")
 
-    return _run_id
+    return run_id
 
 
 def get_run_id() -> str:
     """Return the active run ID, or raise if no run has been initialized."""
-    if _run_id is None:
+    rid = _get("run_id")
+    if rid is None:
         raise RuntimeError("No active run. Call init_run() first.")
-    return _run_id
+    return rid
 
 
 # ── Trace path ───────────────────────────────────────────────────────────────
@@ -161,13 +239,11 @@ def trace(
     can be resolved and hashed.  *extra* is an optional dict merged into the
     entry for structured metadata (e.g. decision details, token usage).
     """
-    global _prev_hash, _seq
-
     input_hashes = {p: _hash_artifact(p, external_base) for p in inputs}
     output_hashes = {p: _hash_artifact(p, external_base) for p in outputs}
 
     entry = {
-        "seq": _seq,
+        "seq": _get("seq"),
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "task": task,
         "inputs": input_hashes,
@@ -176,19 +252,19 @@ def trace(
         "prompt_hash": prompt_hash,
         "provider": provider,
         "max_tokens": max_tokens,
-        "prev_hash": _prev_hash,
+        "prev_hash": _get("prev_hash"),
     }
     if extra:
         entry["extra"] = extra
 
-    entry_hash = _compute_entry_hmac(entry, _hmac_key)
+    entry_hash = _compute_entry_hmac(entry, _get("hmac_key"))
     entry["entry_hash"] = entry_hash
 
     with open(_trace_path(), "a") as f:
         f.write(json.dumps(entry, separators=(",", ":")) + "\n")
 
-    _prev_hash = entry_hash
-    _seq += 1
+    _set("prev_hash", entry_hash)
+    _set("seq", _get("seq") + 1)
 
 
 # ── Integrity verification ──────────────────────────────────────────────────

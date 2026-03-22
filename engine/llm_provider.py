@@ -71,7 +71,20 @@ _SAFE_DEFAULT = 4_096  # conservative fallback for unknown models
 
 # ── Per-stage token overrides (set by cost estimator / tier selection) ────
 # When populated, get_provider() uses these instead of config max_tokens.
-_stage_token_overrides: dict[str, int] = {}
+# Stored in threading.local() so concurrent pipeline runs with different
+# tier selections don't interfere.
+import threading
+
+_local = threading.local()
+
+
+def _get_stage_token_overrides() -> dict[str, int]:
+    """Return the current thread's stage token overrides (lazily initialized)."""
+    overrides = getattr(_local, "stage_token_overrides", None)
+    if overrides is None:
+        _local.stage_token_overrides = {}
+        return _local.stage_token_overrides
+    return overrides
 
 
 def set_stage_token_overrides(overrides: dict[str, int]) -> None:
@@ -79,8 +92,9 @@ def set_stage_token_overrides(overrides: dict[str, int]) -> None:
 
     Called by the pipeline runner after the user picks a tier.
     """
-    _stage_token_overrides.clear()
-    _stage_token_overrides.update(overrides)
+    current = _get_stage_token_overrides()
+    current.clear()
+    current.update(overrides)
     logger.info("Stage token overrides installed: %s", overrides)
 
 
@@ -406,8 +420,8 @@ def get_provider(
     # Priority: explicit override > stage tier budget > config value
     if max_tokens_override:
         max_tokens = max_tokens_override
-    elif stage and stage in _stage_token_overrides:
-        max_tokens = _stage_token_overrides[stage]
+    elif stage and stage in _get_stage_token_overrides():
+        max_tokens = _get_stage_token_overrides()[stage]
         logger.info("Using tier budget for stage '%s': %d tokens", stage, max_tokens)
     else:
         max_tokens = llm.get("max_tokens", 16384)

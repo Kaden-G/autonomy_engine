@@ -4,37 +4,45 @@ The engine can run against its own directory or a separate project folder.
 This module resolves that choice once at startup, then provides path
 accessors (get_state_dir, get_config_path, etc.) that every other module
 uses.  No module computes paths on its own — they all ask this module.
+
+Thread safety:
+    The project directory is stored in ``threading.local()`` so that
+    concurrent pipelines targeting different project folders don't
+    clobber each other.  Single-threaded usage is unaffected.
 """
 
+import threading
 from pathlib import Path
 
-# Engine install location (immutable)
+# Engine install location (immutable — no thread-safety concern)
 ENGINE_ROOT: Path = Path(__file__).resolve().parent.parent
 
-# Module-level state — set once via init()
-_project_dir: Path | None = None
+# Thread-local storage for mutable state.
+# Each thread gets its own _project_dir, so concurrent pipeline runs
+# targeting different project folders are fully isolated.
+_local = threading.local()
 
 
 def init(project_dir: str | Path | None = None) -> None:
-    """Set the active project directory.
+    """Set the active project directory for the current thread.
 
     Must be called once before any ``get_*`` accessor.  When
     *project_dir* is ``None`` the engine root is used (backward-
     compatible default).
     """
-    global _project_dir
     if project_dir is None:
-        _project_dir = ENGINE_ROOT
+        _local.project_dir = ENGINE_ROOT
     else:
-        _project_dir = Path(project_dir).resolve()
+        _local.project_dir = Path(project_dir).resolve()
 
 
 def _ensure_init() -> Path:
     """Return the resolved project dir, auto-initializing to ENGINE_ROOT if needed."""
-    global _project_dir
-    if _project_dir is None:
-        _project_dir = ENGINE_ROOT
-    return _project_dir
+    pd = getattr(_local, "project_dir", None)
+    if pd is None:
+        _local.project_dir = ENGINE_ROOT
+        return ENGINE_ROOT
+    return pd
 
 
 # ── Path accessors ───────────────────────────────────────────────────────────

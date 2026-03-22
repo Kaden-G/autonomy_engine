@@ -15,33 +15,34 @@ Usage::
 from __future__ import annotations
 
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
-_selected_tier: str | None = None
+# Thread-local storage so concurrent pipeline runs with different
+# tier selections don't interfere.
+_local = threading.local()
 
 
 def set_tier(tier_name: str) -> None:
-    """Store the selected tier name (``"premium"`` or ``"mvp"``)."""
-    global _selected_tier
-    _selected_tier = tier_name.lower()
-    logger.info("Active tier set to: %s", _selected_tier)
+    """Store the selected tier name (``"premium"`` or ``"mvp"``) for the current thread."""
+    _local.selected_tier = tier_name.lower()
+    logger.info("Active tier set to: %s", _local.selected_tier)
 
 
 def get_tier() -> str | None:
     """Return the active tier name, or ``None`` if not yet selected."""
-    return _selected_tier
+    return getattr(_local, "selected_tier", None)
 
 
 def is_mvp() -> bool:
     """Return ``True`` if the active tier is MVP."""
-    return _selected_tier == "mvp"
+    return getattr(_local, "selected_tier", None) == "mvp"
 
 
 def reset() -> None:
     """Clear the tier context (for testing)."""
-    global _selected_tier
-    _selected_tier = None
+    _local.selected_tier = None
 
 
 # ── LLM-facing guidance text ────────────────────────────────────────────────

@@ -20,6 +20,11 @@ from prefect import task
 
 from engine.cache import build_cache_key, cache_lookup, cache_save, hash_content, hash_params
 from engine.context import get_prompts_dir
+from engine.extraction import (
+    extract_json_block,
+    extract_ts_type_signatures,
+    extract_py_type_signatures,
+)
 from engine.llm_provider import get_model_limit, get_provider
 from engine.design_contract import DesignContract
 from engine.state_loader import load_state_file, save_state_file
@@ -56,71 +61,20 @@ _MAX_CONTRACT_CHARS_PER_FILE = 3000
 # Max total contract characters injected into a chunk prompt.
 _MAX_TOTAL_CONTRACT_CHARS = 12000
 
-# TypeScript/JavaScript patterns for exported type definitions
-_TS_CONTRACT_PATTERNS = [
-    # export interface Foo { ... }  (capture up to closing brace)
-    re.compile(
-        r"^(export\s+(?:default\s+)?interface\s+\w+(?:\s+extends\s+[^{]+)?\s*\{[^}]*\})",
-        re.MULTILINE | re.DOTALL,
-    ),
-    # export type Foo = ...;
-    re.compile(
-        r"^(export\s+(?:default\s+)?type\s+\w+\s*=\s*[^;]+;)",
-        re.MULTILINE,
-    ),
-    # export enum Foo { ... }
-    re.compile(
-        r"^(export\s+(?:default\s+)?(?:const\s+)?enum\s+\w+\s*\{[^}]*\})",
-        re.MULTILINE | re.DOTALL,
-    ),
-    # export class Foo { (signature line only, not the body)
-    re.compile(
-        r"^(export\s+(?:default\s+)?(?:abstract\s+)?class\s+\w+(?:\s+(?:extends|implements)\s+[^{]+)?\s*\{)",
-        re.MULTILINE,
-    ),
-    # export const FOO = ... (UPPER_CASE constants only — configs, enums-as-objects)
-    re.compile(
-        r"^(export\s+const\s+[A-Z_][A-Z_0-9]*\s*(?::\s*[^=]+)?\s*=\s*.+)",
-        re.MULTILINE,
-    ),
-    # export function foo(params): ReturnType  (signature only)
-    re.compile(
-        r"^(export\s+(?:default\s+)?(?:async\s+)?function\s+\w+\s*\([^)]*\)\s*(?::\s*[^{]+)?)\s*\{",
-        re.MULTILINE,
-    ),
-]
-
-# Python patterns for type definitions
-_PY_CONTRACT_PATTERNS = [
-    # class Foo(Base):  or  @dataclass class Foo:
-    re.compile(
-        r"^((?:@\w+(?:\([^)]*\))?\s*\n)?class\s+\w+(?:\([^)]*\))?\s*:)",
-        re.MULTILINE,
-    ),
-    # Foo: TypeAlias = ...
-    re.compile(
-        r"^(\w+\s*:\s*TypeAlias\s*=\s*.+)",
-        re.MULTILINE,
-    ),
-    # Foo = TypeVar(...)
-    re.compile(
-        r"^(\w+\s*=\s*TypeVar\(.+\))",
-        re.MULTILINE,
-    ),
-]
-
 
 def _extract_type_contracts(manifest_json: str) -> str:
     """Extract exported type signatures from a chunk's manifest files.
 
     Scans each file in the manifest for type-defining patterns
-    (interfaces, types, enums, classes, constants) using regex.
-    Returns a formatted string ready to inject into the next chunk's prompt,
-    with each file's contracts labeled by path so the LLM knows where to
-    import from.
+    (interfaces, types, enums, classes, constants) using the brace-counting
+    extractors in ``engine.extraction``.  Returns a formatted string ready
+    to inject into the next chunk's prompt, with each file's contracts
+    labeled by path so the LLM knows where to import from.
 
-    This is intentionally regex-based (no AST parsing) to be fast,
-    dependency-free, and tolerant of incomplete code.
+    Uses brace-counting (not ``[^}]*``) for TypeScript interfaces/enums
+    so nested types like ``{ database: { host: string } }`` are captured
+    correctly.  Python classes use indentation-based extraction to capture
+    the full body (field names + types), not just the signature line.
     """
     parsed = json.loads(manifest_json)
     contracts: list[str] = []
@@ -137,15 +91,11 @@ def _extract_type_contracts(manifest_json: str) -> str:
         if ext not in _CONTRACT_EXTENSIONS:
             continue
 
-        # Select patterns based on language
-        patterns = _PY_CONTRACT_PATTERNS if ext in (".py", ".pyi") else _TS_CONTRACT_PATTERNS
-
-        matches: list[str] = []
-        for pattern in patterns:
-            for m in pattern.finditer(content):
-                match_text = m.group(1).strip()
-                if match_text and match_text not in matches:
-                    matches.append(match_text)
+        # Use the appropriate extractor based on language
+        if ext in (".py", ".pyi"):
+            matches = extract_py_type_signatures(content)
+        else:
+            matches = extract_ts_type_signatures(content)
 
         if not matches:
             continue
@@ -256,6 +206,11 @@ def _split_response(response: str) -> tuple[str | None, str | None]:
     """Split LLM response into (markdown, manifest_json).
 
     Returns (None, None) when the manifest markers are missing.
+
+    The fallback path uses ``extract_json_block`` (JSON-parse-based scanning)
+    instead of a regex.  The old regex ``r'```json\\s*(\\{.*?"files".*?\\})\\s*```'``
+    broke on manifests with nested objects because lazy matching stopped at the
+    first closing brace.
     """
     start = response.find(_MANIFEST_START)
     end = response.find(_MANIFEST_END)
@@ -265,13 +220,16 @@ def _split_response(response: str) -> tuple[str | None, str | None]:
         raw_json = response[start + len(_MANIFEST_START) : end].strip()
         return markdown, _extract_json(raw_json)
 
-    # Fallback: find a JSON code block with a "files" array
-    pattern = r"```json\s*(\{[\s\S]*?\"files\"\s*:\s*\[[\s\S]*?\})\s*```"
-    match = re.search(pattern, response)
-    if match:
-        raw_json = match.group(1)
-        markdown = response[: match.start()].rstrip()
-        return markdown, _extract_json(raw_json)
+    # Fallback: scan all ```json blocks for one containing "files"
+    block = extract_json_block(response, required_key="files")
+    if block is not None:
+        # Find the position of this block in the response to split markdown
+        # from manifest.  We search for the raw JSON string.
+        block_pos = response.find(block)
+        markdown = response[:block_pos].rstrip() if block_pos > 0 else ""
+        # Remove any trailing fence chars from the markdown
+        markdown = re.sub(r"```\s*json\s*$", "", markdown).rstrip()
+        return markdown, _extract_json(block)
 
     return None, None
 

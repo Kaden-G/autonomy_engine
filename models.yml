@@ -1,0 +1,99 @@
+# ── Model Registry ─────────────────────────────────────────────────────────
+# Single source of truth for model capabilities and pricing.
+#
+# Keys are model-name *prefixes* — "claude-sonnet-4" matches any dated
+# variant like "claude-sonnet-4-20250514".  Longer prefixes win ties.
+#
+# To add a new model: add an entry here and restart the pipeline.
+# No code changes required.
+#
+# Pricing is per 1 million tokens, in USD (updated 2025-05).
+# max_output_tokens is the API-enforced hard limit for each model.
+
+models:
+  # ── Claude family ──────────────────────────────────────────────────────
+  claude-opus-4:
+    provider: claude
+    max_output_tokens: 32000
+    pricing:
+      input: 15.00
+      output: 75.00
+
+  claude-sonnet-4:
+    provider: claude
+    max_output_tokens: 64000
+    pricing:
+      input: 3.00
+      output: 15.00
+
+  claude-haiku-4:
+    provider: claude
+    max_output_tokens: 16000
+    pricing:
+      input: 0.80
+      output: 4.00
+
+  claude-3-5-sonnet:
+    provider: claude
+    max_output_tokens: 8192
+    pricing:
+      input: 3.00
+      output: 15.00
+
+  claude-3-5-haiku:
+    provider: claude
+    max_output_tokens: 8192
+    pricing:
+      input: 0.80
+      output: 4.00
+
+  claude-3-opus:
+    provider: claude
+    max_output_tokens: 4096
+    pricing:
+      input: 15.00
+      output: 75.00
+
+  # ── OpenAI family ──────────────────────────────────────────────────────
+  gpt-4o:
+    provider: openai
+    max_output_tokens: 16384
+    pricing:
+      input: 2.50
+      output: 10.00
+
+  gpt-4o-mini:
+    provider: openai
+    max_output_tokens: 16384
+    pricing:
+      input: 0.15
+      output: 0.60
+
+  gpt-4-turbo:
+    provider: openai
+    max_output_tokens: 4096
+    pricing:
+      input: 10.00
+      output: 30.00
+
+  o1:
+    provider: openai
+    max_output_tokens: 100000
+    pricing:
+      input: 15.00
+      output: 60.00
+
+  o3-mini:
+    provider: openai
+    max_output_tokens: 100000
+    pricing:
+      input: 1.10
+      output: 4.40
+
+# Conservative fallback for models not listed above.
+# The engine logs a warning when this kicks in.
+defaults:
+  max_output_tokens: 4096
+  pricing:
+    input: 0.0
+    output: 0.0

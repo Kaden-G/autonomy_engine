@@ -21,6 +21,7 @@ import yaml
 load_dotenv()
 
 from engine.context import get_config_path
+from engine.model_registry import get_model_limit as _registry_get_limit
 
 logger = logging.getLogger(__name__)
 
@@ -36,38 +37,6 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_RETRIES = 3  # Total attempts = 1 original + 3 retries
 DEFAULT_BACKOFF_BASE = 2.0  # Seconds: 2s → 4s → 8s between retries
-
-# ── Model output-token hard limits ──────────────────────────────────────────
-# These are the *API-enforced* maximums.  When a model isn't listed here we
-# fall back to a conservative default so new/unknown models never blow up.
-#
-# Prefix matching is supported: "claude-sonnet-4" matches any dated variant
-# like "claude-sonnet-4-20250514".  More-specific entries win.
-
-_CLAUDE_MODEL_LIMITS: dict[str, int] = {
-    "claude-opus-4": 32_000,
-    "claude-sonnet-4": 64_000,
-    "claude-haiku-4": 16_000,
-    # Legacy models
-    "claude-3-5-sonnet": 8_192,
-    "claude-3-5-haiku": 8_192,
-    "claude-3-opus": 4_096,
-}
-
-_OPENAI_MODEL_LIMITS: dict[str, int] = {
-    "gpt-4o": 16_384,
-    "gpt-4o-mini": 16_384,
-    "gpt-4-turbo": 4_096,
-    "o1": 100_000,
-    "o3-mini": 100_000,
-}
-
-_PROVIDER_LIMITS: dict[str, dict[str, int]] = {
-    "claude": _CLAUDE_MODEL_LIMITS,
-    "openai": _OPENAI_MODEL_LIMITS,
-}
-
-_SAFE_DEFAULT = 4_096  # conservative fallback for unknown models
 
 # ── Per-stage token overrides (set by cost estimator / tier selection) ────
 # When populated, get_provider() uses these instead of config max_tokens.
@@ -101,27 +70,16 @@ def set_stage_token_overrides(overrides: dict[str, int]) -> None:
 def get_model_limit(provider: str, model: str) -> int:
     """Return the API-enforced max output tokens for *model*.
 
+    Delegates to ``engine.model_registry`` which loads limits from
+    ``models.yml``.  The *provider* argument is kept for backward
+    compatibility but is no longer used — the registry indexes by
+    model prefix, not provider.
+
     Uses longest-prefix matching so dated model IDs (e.g.
     ``claude-sonnet-4-20250514``) resolve to their family limit.
     """
-    limits = _PROVIDER_LIMITS.get(provider, {})
-
-    # Exact match first, then progressively shorter prefixes
-    best_key, best_len = None, 0
-    for key in limits:
-        if model.startswith(key) and len(key) > best_len:
-            best_key, best_len = key, len(key)
-
-    if best_key is not None:
-        return limits[best_key]
-
-    logger.warning(
-        "No known token limit for %s model '%s' — using safe default of %d",
-        provider,
-        model,
-        _SAFE_DEFAULT,
-    )
-    return _SAFE_DEFAULT
+    # provider arg retained for API compatibility; registry doesn't need it
+    return _registry_get_limit(model)
 
 
 def resolve_max_tokens(

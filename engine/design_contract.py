@@ -20,8 +20,9 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from dataclasses import dataclass
+
+from engine.extraction import extract_json_block
 
 logger = logging.getLogger(__name__)
 
@@ -285,11 +286,12 @@ def extract_contract(architecture_text: str) -> DesignContract:
     if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
         raw = architecture_text[start_idx + len(CONTRACT_START) : end_idx].strip()
     else:
-        # Fallback: look for a JSON block with "components"
-        pattern = r"```json\s*(\{[\s\S]*?\"components\"\s*:\s*\[[\s\S]*?\})\s*```"
-        match = re.search(pattern, architecture_text)
-        if match:
-            raw = match.group(1)
+        # Fallback: scan all ```json blocks for one containing "components".
+        # This replaces a fragile regex that broke on nested JSON objects
+        # because lazy matching (.*?) would stop at the first closing brace.
+        block = extract_json_block(architecture_text, required_key="components")
+        if block is not None:
+            raw = block
         else:
             raise RuntimeError(
                 "Design output is missing the DESIGN_CONTRACT block. "

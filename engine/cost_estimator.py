@@ -26,27 +26,9 @@ import yaml
 
 from engine.context import get_state_dir, get_config_path, get_prompts_dir
 from engine.llm_provider import get_model_limit
+from engine.model_registry import get_model_pricing
 
 logger = logging.getLogger(__name__)
-
-# ── Pricing per 1M tokens (USD) ────────────────────────────────────────────
-# Updated as of 2025-05.  Add new models as they launch.
-
-_PRICING: dict[str, dict[str, float]] = {
-    # Claude models — prefix-matched (same as llm_provider)
-    "claude-opus-4": {"input": 15.00, "output": 75.00},
-    "claude-sonnet-4": {"input": 3.00, "output": 15.00},
-    "claude-haiku-4": {"input": 0.80, "output": 4.00},
-    "claude-3-5-sonnet": {"input": 3.00, "output": 15.00},
-    "claude-3-5-haiku": {"input": 0.80, "output": 4.00},
-    "claude-3-opus": {"input": 15.00, "output": 75.00},
-    # OpenAI models
-    "gpt-4o": {"input": 2.50, "output": 10.00},
-    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
-    "gpt-4-turbo": {"input": 10.00, "output": 30.00},
-    "o1": {"input": 15.00, "output": 60.00},
-    "o3-mini": {"input": 1.10, "output": 4.40},
-}
 
 # ── Heuristic multipliers ──────────────────────────────────────────────────
 # Ratio of estimated output tokens to input tokens, per stage.
@@ -174,15 +156,13 @@ class Tier:
 
 
 def _resolve_pricing(model: str) -> dict[str, float]:
-    """Prefix-match model to pricing table, like llm_provider does for limits."""
-    best_key, best_len = None, 0
-    for key in _PRICING:
-        if model.startswith(key) and len(key) > best_len:
-            best_key, best_len = key, len(key)
-    if best_key:
-        return _PRICING[best_key]
-    logger.warning("No pricing data for model '%s' — using $0 estimate", model)
-    return {"input": 0.0, "output": 0.0}
+    """Prefix-match model to pricing table via the shared model registry.
+
+    Delegates to ``engine.model_registry.get_model_pricing()`` which loads
+    pricing from ``models.yml``.  This replaced a hardcoded dict that had
+    to be kept in sync with llm_provider's limit tables manually.
+    """
+    return get_model_pricing(model)
 
 
 def _estimate_tokens(text: str) -> int:

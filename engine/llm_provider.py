@@ -12,6 +12,7 @@ engine can report actual costs at the end of a run.
 from __future__ import annotations
 
 import logging
+import time
 from abc import ABC, abstractmethod
 
 from dotenv import load_dotenv
@@ -22,6 +23,19 @@ load_dotenv()
 from engine.context import get_config_path
 
 logger = logging.getLogger(__name__)
+
+# ── Retry configuration ───────────────────────────────────────────────────────
+# Exponential backoff for transient API failures (rate limits, server errors,
+# timeouts).  These defaults are deliberately conservative — a single pipeline
+# run makes only a handful of LLM calls, so a few seconds of backoff is cheap
+# insurance against a wasted run.
+#
+# Why NOT use a library like tenacity?  This is the only retry site in the
+# codebase, and the logic is simple enough that pulling in a dependency would
+# add more cognitive overhead than it saves.  If retry needs grow, revisit.
+
+DEFAULT_MAX_RETRIES = 3  # Total attempts = 1 original + 3 retries
+DEFAULT_BACKOFF_BASE = 2.0  # Seconds: 2s → 4s → 8s between retries
 
 # ── Model output-token hard limits ──────────────────────────────────────────
 # These are the *API-enforced* maximums.  When a model isn't listed here we
@@ -130,6 +144,10 @@ class LLMProvider(ABC):
     was_truncated: bool = False  # True when last generate() hit max_tokens
     last_usage: dict | None = None  # Token usage from the most recent generate()
 
+    # Retry settings — can be overridden per instance or via config.
+    max_retries: int = DEFAULT_MAX_RETRIES
+    backoff_base: float = DEFAULT_BACKOFF_BASE
+
     # Cumulative usage across all generate() calls on this provider instance.
     # Useful for multi-call stages like chunked implementation.
     _total_input_tokens: int = 0
@@ -155,6 +173,52 @@ class LLMProvider(ABC):
         self._total_output_tokens += output_tokens
         self._call_count += 1
 
+    def _is_retryable(self, exc: Exception) -> bool:
+        """Determine whether an API exception is transient and worth retrying.
+
+        Each provider subclass overrides this to check for provider-specific
+        exception types (rate limits, server errors, timeouts).  The base
+        implementation returns False — unknown exceptions are never retried.
+        """
+        return False
+
+    def _call_with_retry(self, api_fn, *args, **kwargs):
+        """Execute *api_fn* with exponential backoff on transient failures.
+
+        Only retries exceptions where ``self._is_retryable(exc)`` returns True.
+        All other exceptions propagate immediately — we don't want to mask
+        auth errors, invalid requests, or SDK bugs behind retry loops.
+
+        The backoff schedule is: backoff_base^1, backoff_base^2, backoff_base^3
+        (default 2s, 4s, 8s).  Total worst-case delay before giving up is 14s,
+        which is negligible compared to a typical LLM response time.
+        """
+        last_exc: Exception | None = None
+        for attempt in range(1 + self.max_retries):
+            try:
+                return api_fn(*args, **kwargs)
+            except Exception as exc:
+                if not self._is_retryable(exc):
+                    raise  # Not transient — fail fast
+                last_exc = exc
+                if attempt < self.max_retries:
+                    delay = self.backoff_base ** (attempt + 1)
+                    logger.warning(
+                        "Transient API error (attempt %d/%d): %s — retrying in %.1fs",
+                        attempt + 1,
+                        1 + self.max_retries,
+                        exc,
+                        delay,
+                    )
+                    time.sleep(delay)
+                else:
+                    logger.error(
+                        "API call failed after %d attempts. Last error: %s",
+                        1 + self.max_retries,
+                        exc,
+                    )
+        raise last_exc  # type: ignore[misc]  # we know last_exc is set
+
     @abstractmethod
     def generate(self, prompt: str, system: str | None = None) -> str:
         """Send a prompt to the LLM and return the text response.
@@ -167,6 +231,10 @@ class LLMProvider(ABC):
             {"input_tokens": int, "output_tokens": int}
 
         ``self.total_usage`` contains cumulative counts across all calls.
+
+        Transient errors (rate limits, server errors, timeouts) are
+        automatically retried with exponential backoff.  See
+        ``_call_with_retry`` for details.
         """
 
 
@@ -179,8 +247,33 @@ class ClaudeProvider(LLMProvider):
         self.client = anthropic.Anthropic()
         self.model = model
         self.max_tokens = resolve_max_tokens("claude", model, max_tokens)
+        # Store module reference for _is_retryable (avoids re-importing)
+        self._anthropic = anthropic
 
-    def generate(self, prompt: str, system: str | None = None) -> str:
+    def _is_retryable(self, exc: Exception) -> bool:
+        """Retry on Anthropic rate limits (429), server errors (5xx), and timeouts.
+
+        The Anthropic SDK raises typed exceptions for each HTTP status family:
+        - RateLimitError (429) — back off and retry
+        - InternalServerError (500) — transient server issue
+        - APITimeoutError — request timed out, may succeed on retry
+        - APIConnectionError — network glitch, may resolve on retry
+
+        We do NOT retry APIStatusError (generic) or AuthenticationError (401)
+        because those indicate permanent problems the user must fix.
+        """
+        return isinstance(
+            exc,
+            (
+                self._anthropic.RateLimitError,
+                self._anthropic.InternalServerError,
+                self._anthropic.APITimeoutError,
+                self._anthropic.APIConnectionError,
+            ),
+        )
+
+    def _do_generate(self, prompt: str, system: str | None = None) -> str:
+        """Raw API call — separated from generate() so _call_with_retry can wrap it."""
         kwargs: dict = {
             "model": self.model,
             "max_tokens": self.max_tokens,
@@ -213,6 +306,9 @@ class ClaudeProvider(LLMProvider):
             )
         return "".join(text_parts)
 
+    def generate(self, prompt: str, system: str | None = None) -> str:
+        return self._call_with_retry(self._do_generate, prompt, system)
+
 
 class OpenAIProvider(LLMProvider):
     provider = "openai"
@@ -223,8 +319,33 @@ class OpenAIProvider(LLMProvider):
         self.client = openai.OpenAI()
         self.model = model
         self.max_tokens = resolve_max_tokens("openai", model, max_tokens)
+        # Store module reference for _is_retryable (avoids re-importing)
+        self._openai = openai
 
-    def generate(self, prompt: str, system: str | None = None) -> str:
+    def _is_retryable(self, exc: Exception) -> bool:
+        """Retry on OpenAI rate limits (429), server errors (5xx), and timeouts.
+
+        The OpenAI SDK raises typed exceptions mirroring HTTP status families:
+        - RateLimitError (429) — back off and retry
+        - InternalServerError (500) — transient server issue
+        - APITimeoutError — request timed out, may succeed on retry
+        - APIConnectionError — network glitch, may resolve on retry
+
+        We do NOT retry AuthenticationError (401) or BadRequestError (400)
+        because those indicate permanent problems the user must fix.
+        """
+        return isinstance(
+            exc,
+            (
+                self._openai.RateLimitError,
+                self._openai.InternalServerError,
+                self._openai.APITimeoutError,
+                self._openai.APIConnectionError,
+            ),
+        )
+
+    def _do_generate(self, prompt: str, system: str | None = None) -> str:
+        """Raw API call — separated from generate() so _call_with_retry can wrap it."""
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
@@ -256,6 +377,9 @@ class OpenAIProvider(LLMProvider):
                 self.max_tokens,
             )
         return choice.message.content
+
+    def generate(self, prompt: str, system: str | None = None) -> str:
+        return self._call_with_retry(self._do_generate, prompt, system)
 
 
 def get_provider(
@@ -295,9 +419,18 @@ def get_provider(
     else:
         model = default_model
 
+    # Retry settings from config (optional — sensible defaults apply)
+    retry_cfg = llm.get("retry", {})
+    retry_max = retry_cfg.get("max_retries", DEFAULT_MAX_RETRIES)
+    retry_backoff = retry_cfg.get("backoff_base", DEFAULT_BACKOFF_BASE)
+
     if provider_name == "claude":
-        return ClaudeProvider(model=model, max_tokens=max_tokens)
+        p = ClaudeProvider(model=model, max_tokens=max_tokens)
     elif provider_name == "openai":
-        return OpenAIProvider(model=model, max_tokens=max_tokens)
+        p = OpenAIProvider(model=model, max_tokens=max_tokens)
     else:
         raise ValueError(f"Unknown LLM provider: {provider_name}")
+
+    p.max_retries = retry_max
+    p.backoff_base = retry_backoff
+    return p

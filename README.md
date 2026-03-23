@@ -1,9 +1,10 @@
-# Autonomy Engine v1.3
+# Autonomy Engine v1.4
 
-![Tests](https://img.shields.io/badge/tests-265%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-536%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-61%25%20engine-blue)
 ![Security](https://img.shields.io/badge/bandit-1%20known%20%7C%200%20unexpected-yellow)
 ![Deps](https://img.shields.io/badge/pip--audit-0%20project%20vulns-brightgreen)
+![Deps Pinned](https://img.shields.io/badge/deps-pinned%20%28lock%20file%29-blue)
 
 An autonomous software build pipeline that turns a project description into working, tested code — with human approval gates, tamper-evident audit trails, and strict quality contracts that keep AI-generated output on-spec.
 
@@ -56,7 +57,7 @@ At any stage, the pipeline can pause and ask a human to approve before continuin
 ## What This Is NOT For
 
 - Replacing human judgment on security, ethics, or architecture
-- Unsupervised production deployments — this is a supervised tool
+- Fully unsupervised production deployments without monitoring — the engine supports unattended runs but benefits from log aggregation and alerting
 - General-purpose AI agent framework — this is a specific pipeline, not a platform
 - Real-time or latency-sensitive workflows
 
@@ -293,9 +294,9 @@ Three independent tools provide ongoing due-diligence on the engine's own codeba
 
 ### Test Coverage (pytest-cov)
 
-The engine has 265+ automated tests covering the core modules. Coverage of the `engine/` package is **61%** on the testable surface. Modules with 0% coverage (cost_estimator, usage_tracker, notifier, decision_gates) depend on the Prefect runtime, which is only available when running the full pipeline — they are fully exercised during real pipeline runs but can't be unit-tested in isolation.
+The engine has 536 automated tests covering the core modules. Coverage of the `engine/` package is **61%** on the testable surface. Modules with 0% coverage (cost_estimator, usage_tracker, notifier, decision_gates) depend on the Prefect runtime, which is only available when running the full pipeline — they are fully exercised during real pipeline runs but can't be unit-tested in isolation.
 
-High-coverage modules (90%+): cache, contract_checker, design_contract, evidence, sandbox, spec_normalizer, tier_context, tracer.
+High-coverage modules (90%+): cache, contract_checker, design_contract, evidence, extraction, model_registry, sandbox, spec_normalizer, tier_context, tracer.
 
 ### Security Scan (bandit)
 
@@ -330,7 +331,8 @@ This produces a compressed archive containing the full trace, config snapshot, e
 ## Quickstart
 
 ```bash
-pip install -e ".[dev]"
+pip install -r requirements.lock          # reproducible install
+pip install -e ".[dev]"                    # or editable for development
 python -m intake.intake new-project
 python flows/autonomous_flow.py
 ```
@@ -346,7 +348,9 @@ streamlit run dashboard/app.py
 
 ```bash
 cd ~/Desktop/autonomy_engine
-pip install -e ".[dev]"
+pip install -r requirements.lock    # production: pinned versions
+# or
+pip install -e ".[dev]"             # development: editable with dev tools
 ```
 
 ### Environment Setup
@@ -426,6 +430,15 @@ A manifest of all extracted files is saved to `state/build/MANIFEST.md`.
 
 ## Configuration
 
+### Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `AE_ENV` | *(unset)* | Loads `config.<env>.yml` (e.g., `production` → `config.production.yml`) |
+| `AE_CONFIG_PATH` | *(unset)* | Explicit config file path (overrides `AE_ENV`) |
+| `AE_LOG_FORMAT` | `text` | Log output format: `text` (human-readable) or `json` (structured) |
+| `AE_LOG_LEVEL` | `INFO` | Root log level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+
 ### config.yml — Runtime Settings
 
 Controls how the engine runs (which AI model, token budgets, gate behavior, sandbox settings):
@@ -455,8 +468,40 @@ verify:
   llm_on_fail_summary: true
   llm_on_pass_summary: true
 
+cache:
+  llm_ttl_days: 30         # delete LLM cache entries older than 30 days (0 = disable)
+  venv_ttl_days: 7          # delete sandbox venvs older than 7 days (0 = disable)
+
 checks: []                 # approved test commands (see config.yml for examples)
 ```
+
+### models.yml — Model Registry
+
+Defines output-token limits and per-million-token pricing for all supported models. Both `llm_provider.py` and `cost_estimator.py` load from this file. Adding a new model requires only a YAML edit:
+
+```yaml
+models:
+  claude-sonnet-4:
+    provider: claude
+    max_output_tokens: 64000
+    pricing:
+      input: 3.00
+      output: 15.00
+  gpt-4o:
+    provider: openai
+    max_output_tokens: 16384
+    pricing:
+      input: 2.50
+      output: 10.00
+
+defaults:
+  max_output_tokens: 4096
+  pricing:
+    input: 0.0
+    output: 0.0
+```
+
+Prefix matching is supported — `claude-sonnet-4` matches `claude-sonnet-4-20250514`. A project-local `models.yml` overrides the engine default, enabling per-project model customization.
 
 ### DECISION_GATES.yml — Gate Policies
 
@@ -498,6 +543,10 @@ The verification stage supports three modes to balance thoroughness against cost
 
 Test environments (Python virtualenvs) are cached and reused across runs when dependencies haven't changed. A shared package cache further speeds up setup.
 
+### Cache Eviction
+
+Both the LLM response cache and sandbox virtualenv cache are automatically cleaned at the start of each pipeline run. Entries older than the configured TTL are deleted — 30 days for LLM responses, 7 days for virtualenvs by default. TTLs are configurable in `config.yml` under the `cache` section. Set a TTL to `0` to disable eviction for that cache type.
+
 ### Benchmarking
 
 ```bash
@@ -506,6 +555,71 @@ python bench/compare_results.py bench/results_old.json bench/results_new.json
 ```
 
 See `bench/README.md` for full documentation.
+
+---
+
+## Resilience
+
+### Retry Logic (Exponential Backoff)
+
+All LLM API calls are wrapped with automatic retry on transient failures — rate limits (429), server errors (5xx), timeouts, and connection drops. The engine retries up to 3 times with exponential backoff (2s → 4s → 8s). Non-transient errors (authentication, validation) fail fast. Retry parameters are configurable per-provider in `config.yml` under `llm.retry.max_retries` and `llm.retry.backoff_base`.
+
+### Thread Safety
+
+Module-level state (run IDs, hash chains, project context, tier selection, token overrides) uses `threading.local()` for isolation. This means multiple pipeline runs can execute concurrently in the same process without corrupting each other's audit trails or context. A module proxy pattern (`sys.modules` replacement) preserves backward compatibility with direct attribute access in tests.
+
+### Robust Contract Extraction
+
+Contract and manifest extraction uses parse-based scanning instead of regex. JSON blocks are found by scanning all fenced code blocks and running `json.loads` on each — no regex for the JSON itself. TypeScript interfaces and enums are extracted with a brace-counting state machine that correctly handles nested types like `{ database: { host: string } }`. Python class extraction captures the full body (fields and methods) using indentation tracking. The old regex patterns silently truncated nested structures; the new approach handles arbitrary nesting depth.
+
+---
+
+## Operations
+
+### Environment-Specific Configuration
+
+The engine supports per-environment config files for dev/staging/production deployments:
+
+```bash
+# Use an environment-specific config
+AE_ENV=production python flows/autonomous_flow.py
+# → loads config.production.yml
+
+# Or specify an explicit config path
+AE_CONFIG_PATH=my-config.yml python flows/autonomous_flow.py
+```
+
+Resolution order: `AE_CONFIG_PATH` (explicit path) → `AE_ENV` (loads `config.<env>.yml`) → `config.yml` (default). This is backward compatible — unset both variables and the engine behaves exactly as before.
+
+### Model Registry (models.yml)
+
+Model output-token limits and per-million-token pricing are defined in a single `models.yml` file — not hardcoded in Python. Adding a new model is a one-line YAML edit with no code changes. Both `llm_provider.py` (for token limits) and `cost_estimator.py` (for pricing) load from this shared registry. Prefix matching is supported: `claude-sonnet-4` matches dated variants like `claude-sonnet-4-20250514`.
+
+### Structured Logging
+
+Two output modes controlled by `AE_LOG_FORMAT`:
+
+```bash
+# Human-readable (default)
+AE_LOG_FORMAT=text python flows/autonomous_flow.py
+
+# JSON-lines for log aggregation (Datadog, CloudWatch, ELK)
+AE_LOG_FORMAT=json AE_LOG_LEVEL=DEBUG python flows/autonomous_flow.py
+```
+
+JSON mode emits one self-contained JSON object per line with `timestamp`, `level`, `logger`, `message`, and any structured `extra` fields. Log level is controlled by `AE_LOG_LEVEL` (default: `INFO`).
+
+### Graceful Shutdown
+
+The pipeline installs SIGTERM and SIGINT handlers at startup. When a container orchestrator (ECS, Kubernetes) sends SIGTERM, the engine writes a `shutdown` trace entry to the audit log before exiting, keeping the HMAC chain valid. A second signal forces immediate exit. Exit codes follow Unix convention: `128 + signal number`.
+
+### Dependency Pinning
+
+All dependencies in `pyproject.toml` have upper bounds (e.g., `anthropic>=0.40,<1`) to prevent breaking changes from surprise major-version releases. Exact versions are locked in `requirements.lock` (production) and `requirements-dev.lock` (development), generated by `pip-compile`. For reproducible deployments:
+
+```bash
+pip install -r requirements.lock
+```
 
 ---
 
@@ -521,6 +635,9 @@ engine/               Core engine modules
   context.py          Path resolution — figures out where project files live
   decision_gates.py   Gate policies (pause/auto/skip) loaded from config
   llm_provider.py     AI model interface — Claude and OpenAI behind one API
+  model_registry.py   Config-driven model limits and pricing (loads models.yml)
+  extraction.py       Robust JSON/type extraction — brace-counting, not regex
+  log_config.py       Centralized logging — text or JSON-lines output
   tracer.py           Tamper-evident audit log (HMAC-SHA256 hash chain)
   evidence.py         Test runner — auto-detects checks, captures structured results
   report.py           Audit bundle exporter (compressed archive with full run data)
@@ -529,9 +646,9 @@ engine/               Core engine modules
   contract_checker.py Post-build compliance check — did the AI follow the contract?
   spec_normalizer.py  Normalizes user input, flags ambiguity, structures for design
   tier_context.py     Injects tier-appropriate scope guidance into AI prompts
-  cost_estimator.py   Pre-run token and cost estimation for tier selection
+  cost_estimator.py   Pre-run token and cost estimation (pricing from models.yml)
   usage_tracker.py    Post-run actual vs. projected token usage comparison
-  cache.py            Deterministic AI response caching
+  cache.py            Deterministic AI response caching with TTL eviction
 
 flows/                Prefect flow definition — the main pipeline entry point
 tasks/                Individual pipeline stages (one file per stage)
@@ -567,6 +684,10 @@ state/                Runtime artifacts (excluded from version control)
   cache/llm/          Cached AI responses
   sandbox_cache/      Cached test environments
 
-tests/                Automated test suite (265 tests, 61% engine coverage)
+models.yml            Model registry — output limits and pricing per model
+requirements.lock     Pinned production dependencies (pip-compile output)
+requirements-dev.lock Pinned dev dependencies (pip-compile output)
+
+tests/                Automated test suite (536 tests, 61% engine coverage)
 bench/                Performance benchmarking tools
 ```

@@ -39,21 +39,14 @@ class TestExtractJsonBlock:
 
     def test_skips_malformed_json(self):
         """The first block is broken JSON; the second is valid."""
-        text = (
-            '```json\n{broken json\n```\n\n'
-            '```json\n{"components": ["a"]}\n```'
-        )
+        text = '```json\n{broken json\n```\n\n```json\n{"components": ["a"]}\n```'
         result = extract_json_block(text, "components")
         assert result is not None
         assert json.loads(result)["components"] == ["a"]
 
     def test_handles_nested_objects(self):
         """The key improvement: nested objects don't break extraction."""
-        nested = {
-            "components": [
-                {"name": "Core", "config": {"nested": {"deep": True}}}
-            ]
-        }
+        nested = {"components": [{"name": "Core", "config": {"nested": {"deep": True}}}]}
         text = f"```json\n{json.dumps(nested, indent=2)}\n```"
         result = extract_json_block(text, "components")
         assert result is not None
@@ -62,19 +55,13 @@ class TestExtractJsonBlock:
 
     def test_returns_first_qualifying_block(self):
         """When multiple blocks have the key, returns the first."""
-        text = (
-            '```json\n{"components": ["first"]}\n```\n'
-            '```json\n{"components": ["second"]}\n```'
-        )
+        text = '```json\n{"components": ["first"]}\n```\n```json\n{"components": ["second"]}\n```'
         result = extract_json_block(text, "components")
         assert json.loads(result)["components"] == ["first"]
 
     def test_ignores_non_json_fences(self):
         """Only processes ```json blocks, not ```python or plain ```."""
-        text = (
-            '```python\n{"components": [1]}\n```\n'
-            '```json\n{"files": [1]}\n```'
-        )
+        text = '```python\n{"components": [1]}\n```\n```json\n{"files": [1]}\n```'
         result = extract_json_block(text, "components")
         assert result is None  # The python block should be ignored
 
@@ -84,7 +71,7 @@ class TestExtractJsonBlock:
 
     def test_ignores_json_lists(self):
         """A JSON array (not object) should be skipped."""
-        text = '```json\n[1, 2, 3]\n```'
+        text = "```json\n[1, 2, 3]\n```"
         assert extract_json_block(text, "components") is None
 
 
@@ -257,10 +244,7 @@ class TestExtractTsTypeSignatures:
 
     def test_deduplication(self):
         """Duplicate definitions (e.g. re-exported) should be deduped."""
-        code = (
-            "export interface Foo { id: string; }\n"
-            "export interface Foo { id: string; }\n"
-        )
+        code = "export interface Foo { id: string; }\nexport interface Foo { id: string; }\n"
         sigs = extract_ts_type_signatures(code)
         assert len(sigs) == 1
 
@@ -326,28 +310,19 @@ class TestExtractPyTypeSignatures:
         assert "TypeVar" in sigs[0]
 
     def test_multiple_classes(self):
-        code = (
-            "class User:\n    id: str\n\n"
-            "class Admin:\n    role: str\n"
-        )
+        code = "class User:\n    id: str\n\nclass Admin:\n    role: str\n"
         sigs = extract_py_type_signatures(code)
         assert len(sigs) == 2
 
     def test_class_body_ends_at_dedent(self):
         """Class body extraction stops when indentation returns to base level."""
-        code = (
-            "class Foo:\n"
-            "    x: int\n"
-            "\n"
-            "# This should NOT be part of Foo\n"
-            "some_variable = 42\n"
-        )
+        code = "class Foo:\n    x: int\n\n# This should NOT be part of Foo\nsome_variable = 42\n"
         sigs = extract_py_type_signatures(code)
         assert len(sigs) == 1
         assert "some_variable" not in sigs[0]
 
     def test_class_with_decorator_args(self):
-        code = '@dataclass(frozen=True)\nclass Point:\n    x: float\n    y: float\n'
+        code = "@dataclass(frozen=True)\nclass Point:\n    x: float\n    y: float\n"
         sigs = extract_py_type_signatures(code)
         assert len(sigs) == 1
         assert "@dataclass(frozen=True)" in sigs[0]

@@ -84,10 +84,13 @@ def _load_registry() -> tuple[dict[str, ModelEntry], ModelEntry]:
         raw = yaml.safe_load(f)
 
     models: dict[str, ModelEntry] = raw.get("models", {})
-    defaults: ModelEntry = raw.get("defaults", {
-        "max_output_tokens": 4096,
-        "pricing": {"input": 0.0, "output": 0.0},
-    })
+    defaults: ModelEntry = raw.get(
+        "defaults",
+        {
+            "max_output_tokens": 4096,
+            "pricing": {"input": 0.0, "output": 0.0},
+        },
+    )
 
     logger.debug("Loaded %d model entries from %s", len(models), path)
     return models, defaults

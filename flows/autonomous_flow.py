@@ -134,6 +134,7 @@ def _load_config(project_root) -> dict:
     with open(config_path) as f:
         return yaml.safe_load(f) or {}
 
+
 REQUIRED_INPUTS = [
     "inputs/project_spec.yml",
     "inputs/REQUIREMENTS.md",

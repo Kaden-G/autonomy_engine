@@ -176,8 +176,7 @@ def extract_braced_body(text: str, start_pos: int) -> str:
         i += 1
 
     raise ValueError(
-        f"Unmatched '{{' at position {start_pos} — "
-        f"reached end of text at depth {depth}"
+        f"Unmatched '{{' at position {start_pos} — reached end of text at depth {depth}"
     )
 
 

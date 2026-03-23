@@ -5,7 +5,6 @@ fallback defaults apply for unknown models, and the registry can be
 reloaded cleanly (important for tests that mutate the file).
 """
 
-
 import pytest
 import yaml
 
@@ -194,11 +193,13 @@ class TestMissingFile:
         # Also patch the engine-root fallback so it can't find the real file
         import engine.model_registry as reg
 
-        monkeypatch.setattr(reg, "_find_models_yml", lambda: (_ for _ in ()).throw(
-            FileNotFoundError(
-                "models.yml not found in project directory or engine root."
-            )
-        ))
+        monkeypatch.setattr(
+            reg,
+            "_find_models_yml",
+            lambda: (_ for _ in ()).throw(
+                FileNotFoundError("models.yml not found in project directory or engine root.")
+            ),
+        )
         reload_registry()
 
         with pytest.raises(FileNotFoundError, match="models.yml not found"):

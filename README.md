@@ -147,6 +147,16 @@ The **extract** step parses the AI's output for code blocks, then writes each fi
 
 ---
 
+## Development Approach
+
+This project was built with Claude as a development partner — architecture decisions, security model, code review, and implementation were all done in collaboration with AI. That's a deliberate choice, not an asterisk.
+
+The engineering value of this project lives in the decisions: why HMAC-SHA256 over plain hash chains, why contracts instead of freeform prompts, why Prefect over a hand-rolled state machine, where to draw the threat model boundary and document what's explicitly out of scope. Those decisions are mine. The ability to execute on them efficiently using AI tooling is the skill, not the shortcut.
+
+This is also a project *about* AI-supervised pipelines — building it with AI-assisted development is practicing what it preaches.
+
+---
+
 ## Contract System
 
 The contract system is the engine's primary defense against **AI interpretation drift** — the tendency for an AI to forget or reinterpret decisions made earlier in the pipeline. This is the root cause of most cross-file inconsistencies (wrong field names, missing files, imports that reference things that don't exist).

@@ -1,10 +1,12 @@
 # Autonomy Engine v1.4
 
+![CI](https://github.com/Kaden-G/autonomy-engine/actions/workflows/ci.yml/badge.svg)
 ![Tests](https://img.shields.io/badge/tests-536%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-61%25%20engine-blue)
 ![Security](https://img.shields.io/badge/bandit-1%20known%20%7C%200%20unexpected-yellow)
 ![Deps](https://img.shields.io/badge/pip--audit-0%20project%20vulns-brightgreen)
 ![Deps Pinned](https://img.shields.io/badge/deps-pinned%20%28lock%20file%29-blue)
+![Docker](https://img.shields.io/badge/docker-compose%20up-blue)
 
 An autonomous software build pipeline that turns a project description into working, tested code — with human approval gates, tamper-evident audit trails, and strict quality contracts that keep AI-generated output on-spec.
 
@@ -220,39 +222,49 @@ Gates trigger on architectural tradeoffs, test failures, and verification reject
 
 ## Dashboard
 
-A web-based dashboard (built with Streamlit) provides a visual interface for the full pipeline lifecycle.
+The Streamlit dashboard is the primary interface for the engine — most users never touch the CLI. It covers the entire lifecycle: describe a project, estimate costs, launch a build, watch it run, inspect every artifact, and verify the audit trail.
 
-**Install and launch:**
+**Launch:**
 ```bash
-pip install -e ".[dashboard]"
-streamlit run dashboard/app.py
-```
+# Docker (recommended)
+docker compose up                  # → http://localhost:8501
 
-Or point it at a specific project:
-```bash
+# Local
+streamlit run dashboard/app.py     # → http://localhost:8501
+
+# Point at a different project directory
 AUTONOMY_ENGINE_PROJECT_DIR=/path/to/project streamlit run dashboard/app.py
 ```
 
-**Navigation** is organized into two groups:
+The sidebar organizes pages into two groups.
 
-*Main:*
-- **Dashboard** — pipeline status with real pass/fail indicators, recent runs, cache statistics
-- **Pipeline Explorer** — interactive visual map of the pipeline stages, inputs, outputs, and why each step matters (educational, no run data required)
-- **Create Project** — form-based intake with project management (load previous specs, view run history)
-- **Run Pipeline** — tier selection with cost estimates, live progress with trace timeline
+### Main Pages
 
-*Security & Ops:*
-- **Run Outputs** — every artifact from a pipeline run, organized by stage with clickable file viewers (select a run, click any output to read it inline)
-- **Inspector** — detailed trace timeline, evidence records, decisions, artifacts, and config snapshot per run
-- **Audit Trail** — visual hash chain with integrity verification and export to file
-- **Configuration** — active AI model settings, gate policies, sandbox config, approved check commands
-- **Benchmarks** — per-stage timing, cache hit rates, actual vs. projected token usage
+**Dashboard** — The landing page. Shows pipeline status with real pass/fail indicators (green = all checks passed, red = failures, amber = in progress, gray = pending). Also displays recent run history and cache hit statistics. Status indicators are evidence-backed — the dashboard never shows a false "success."
 
-Pipeline status indicators reflect real evidence: green only when the stage ran and all checks passed, red when checks failed, amber when in progress, gray when pending. The dashboard never shows a false "success."
+**Pipeline Explorer** — An interactive visual map of the six pipeline stages. Click any stage to see its inputs, outputs, and why it exists. This page is educational and doesn't require run data — useful for onboarding or explaining the architecture to stakeholders.
+
+**Create Project** — Form-based intake that replaces the CLI's `intake new-project`. Fill in project name, description, requirements, and tech stack. Features include loading previous specs, viewing run history per project, and auto-saving form fields. One-click button to launch the pipeline directly from here.
+
+**Run Pipeline** — Tier selection (MVP vs. Premium) with pre-run cost estimates showing projected token usage and dollar cost. Once launched, displays live progress with a trace timeline that updates as each stage completes. Decision gates surface here when the pipeline pauses for human approval.
+
+### Security & Ops Pages
+
+**Run Outputs** — Browse every artifact from a pipeline run, organized by stage (design, implement, extract, test, verify). Select a run from the dropdown, then click any output file to read it inline — architecture docs, generated code, test results, verification reports.
+
+**Inspector** — The deep-dive view. Shows the complete trace timeline, individual evidence records (with command, exit code, and full output), every decision gate interaction, all artifacts, and the config snapshot that was active during the run.
+
+**Audit Trail** — Visual hash-chain viewer. Each trace entry shows its HMAC signature and link to the previous entry. Includes a one-click integrity verification button that walks the chain and flags any broken links. Export the full trail to a file for offline review or compliance handoff.
+
+**Configuration** — Read-only view of the active engine configuration: AI model settings, gate policies, sandbox config, approved check commands, and cache TTLs. Useful for verifying what settings a run will use before launching.
+
+**Benchmarks** — Per-stage timing breakdowns, cache hit rates across runs, and actual vs. projected token usage comparisons. Helps identify which stages are bottlenecks and whether cost estimates are calibrated.
 
 ---
 
 ## Security Model
+
+**The threat model in one paragraph:** The Autonomy Engine treats AI-generated code as untrusted output in a supervised pipeline. Every pipeline action is recorded in an HMAC-SHA256 tamper-evident audit trail that detects after-the-fact log modification — providing chain-of-custody guarantees for autonomous code generation. The engine enforces workspace isolation (generated code cannot overwrite engine files), path traversal protection (no directory escape attacks), contract compliance verification (output must match the approved design), and API key hygiene (secrets never appear in logs or prompts). The explicit non-goal is OS-level sandboxing — the engine assumes a human reviews generated code before deployment, and recommends containerization for higher-threat environments.
 
 This section documents what the engine protects against and — just as importantly — what it doesn't. Honest threat boundaries are more useful than vague claims.
 
@@ -328,29 +340,46 @@ This produces a compressed archive containing the full trace, config snapshot, e
 
 ---
 
-## Quickstart
+## Quickstart (60 Seconds)
+
+### Option A: Docker (recommended — zero local setup)
 
 ```bash
-pip install -r requirements.lock          # reproducible install
-pip install -e ".[dev]"                    # or editable for development
+git clone https://github.com/Kaden-G/autonomy-engine.git
+cd autonomy-engine
+cp .env.example .env               # add your ANTHROPIC_API_KEY
+docker compose up                  # → http://localhost:8501
+```
+
+That's it. The dashboard is running. Create a project, pick a tier, launch a build.
+
+### Option B: Local install
+
+```bash
+git clone https://github.com/Kaden-G/autonomy-engine.git
+cd autonomy-engine
+pip install -r requirements.lock   # pinned production deps
+pip install -e ".[dashboard]"      # adds Streamlit + Plotly
+cp .env.example .env               # add your ANTHROPIC_API_KEY
+streamlit run dashboard/app.py     # → http://localhost:8501
+```
+
+### Option C: CLI only (no dashboard)
+
+```bash
+pip install -r requirements.lock
+pip install -e .
+cp .env.example .env               # add your ANTHROPIC_API_KEY
 python -m intake.intake new-project
+prefect server start               # separate terminal
 python flows/autonomous_flow.py
 ```
 
-Or use the dashboard:
+## Setup (Development)
 
 ```bash
-pip install -e ".[dashboard]"
-streamlit run dashboard/app.py
-```
-
-## Setup
-
-```bash
-cd ~/Desktop/autonomy_engine
 pip install -r requirements.lock    # production: pinned versions
-# or
-pip install -e ".[dev]"             # development: editable with dev tools
+pip install -e ".[dev,dashboard]"   # editable with dev tools + dashboard
 ```
 
 ### Environment Setup
@@ -687,6 +716,12 @@ state/                Runtime artifacts (excluded from version control)
 models.yml            Model registry — output limits and pricing per model
 requirements.lock     Pinned production dependencies (pip-compile output)
 requirements-dev.lock Pinned dev dependencies (pip-compile output)
+Dockerfile            Multi-stage container build (dashboard)
+docker-compose.yml    One-command launch with volume mounts
+.dockerignore         Keeps build context lean
+
+.github/workflows/
+  ci.yml              GitHub Actions: lint, test (3.10–3.12), import check, security
 
 tests/                Automated test suite (536 tests, 61% engine coverage)
 bench/                Performance benchmarking tools

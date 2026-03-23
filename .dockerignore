@@ -1,0 +1,44 @@
+# Keep the Docker build context lean — exclude everything that isn't needed
+# inside the container.
+
+# Runtime state (mounted as a volume instead)
+state/
+
+# Version control
+.git/
+.gitignore
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environments
+.env
+.env.local
+.env.*.local
+.venv/
+venv/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Test / coverage artifacts
+htmlcov/
+.coverage
+coverage.xml
+
+# Claude Code working files
+/.claude/
+CLAUDE_CODE_*.md
+
+# Docs that shouldn't bloat the image
+*.docx
+Autonomy_Engine_Review.docx
+story_engine_architecture.html

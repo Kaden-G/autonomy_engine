@@ -1,0 +1,35 @@
+# --------------------------------------------------------------------------
+# Autonomy Engine — Docker Compose
+#
+# Quick start:
+#   1. cp .env.example .env  (then add your API key)
+#   2. docker compose up
+#   3. Open http://localhost:8501
+#
+# Services:
+#   dashboard  — Streamlit web UI (the primary way to use the engine)
+#
+# The state/ directory is mounted as a volume so pipeline run artifacts
+# (audit logs, evidence records, generated code) persist across restarts.
+# --------------------------------------------------------------------------
+
+services:
+  dashboard:
+    build: .
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env                          # API keys (ANTHROPIC_API_KEY, etc.)
+    environment:
+      - AE_LOG_FORMAT=json            # structured logs for container output
+      - AE_LOG_LEVEL=INFO
+    volumes:
+      - ./state:/app/state            # persist pipeline artifacts
+      - ./config.yml:/app/config.yml  # use host config
+      - ./models.yml:/app/models.yml  # use host model registry
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

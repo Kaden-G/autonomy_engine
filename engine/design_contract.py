@@ -53,11 +53,13 @@ class TypeDefinition:
 
     @classmethod
     def from_dict(cls, d: dict) -> TypeDefinition:
+        # Defensive: LLMs sometimes omit 'fields' for enums or type aliases,
+        # and may omit 'kind' or 'file_path' in minimal responses.
         return cls(
             name=d["name"],
-            kind=d["kind"],
-            fields=d["fields"],
-            file_path=d["file_path"],
+            kind=d.get("kind", "unknown"),
+            fields=d.get("fields", {}),
+            file_path=d.get("file_path", ""),
         )
 
 
@@ -149,8 +151,8 @@ class DesignContract:
         return cls(
             project_name=d["project_name"],
             language=d["language"],
-            components=[ComponentContract.from_dict(c) for c in d["components"]],
-            canonical_types=[TypeDefinition.from_dict(t) for t in d["canonical_types"]],
+            components=[ComponentContract.from_dict(c) for c in d.get("components", [])],
+            canonical_types=[TypeDefinition.from_dict(t) for t in d.get("canonical_types", [])],
             tech_decisions=[TechDecision.from_dict(t) for t in d.get("tech_decisions", [])],
             entry_point=d.get("entry_point", ""),
             total_file_budget=d.get("total_file_budget", 80),

@@ -39,6 +39,12 @@ from typing import Any
 
 from langgraph.types import interrupt
 
+# Suppress noisy Prefect task-engine logs when Prefect is installed.
+# Under LangGraph, DecisionRequired exceptions are expected control flow,
+# but Prefect's @task wrapper logs them as "Task run failed" at ERROR level.
+logging.getLogger("prefect.task_runs").setLevel(logging.CRITICAL)
+logging.getLogger("prefect").setLevel(logging.WARNING)
+
 from engine.cache import evict_stale_llm_cache
 from engine.context import get_state_dir, init as init_context
 from engine.decision_gates import (

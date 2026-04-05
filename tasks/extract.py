@@ -18,7 +18,7 @@ from pathlib import Path
 
 import yaml
 from pydantic import ValidationError
-from prefect import task
+from engine.compat import task
 
 from engine.context import get_project_dir
 from engine.state_loader import load_state_file, save_state_file

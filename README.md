@@ -1,16 +1,17 @@
-# Autonomy Engine v1.4
+# Autonomy Engine v2.0
 
 ![CI](https://github.com/Kaden-G/autonomy-engine/actions/workflows/ci.yml/badge.svg)
-![Tests](https://img.shields.io/badge/tests-536%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-551%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-61%25%20engine-blue)
 ![Security](https://img.shields.io/badge/bandit-1%20known%20%7C%200%20unexpected-yellow)
 ![Deps](https://img.shields.io/badge/pip--audit-0%20project%20vulns-brightgreen)
 ![Deps Pinned](https://img.shields.io/badge/deps-pinned%20%28lock%20file%29-blue)
 ![Docker](https://img.shields.io/badge/docker-compose%20up-blue)
+![Orchestration](https://img.shields.io/badge/orchestration-LangGraph-purple)
 
 An autonomous software build pipeline that turns a project description into working, tested code — with human approval gates, tamper-evident audit trails, and strict quality contracts that keep AI-generated output on-spec.
 
-Built on [Prefect](https://www.prefect.io/) (workflow orchestration) and compatible with Claude and OpenAI as the underlying AI models.
+Built on [LangGraph](https://langchain-ai.github.io/langgraph/) (stateful graph orchestration) and compatible with Claude and OpenAI as the underlying AI models.
 
 ---
 
@@ -106,7 +107,7 @@ The engine has two phases: human-driven intake (you describe the project) and ma
              │ read-only from here on
 ┌────────────▼─────────────┐
 │ Autonomous Engine        │  ← Phase 1: machine-driven pipeline
-│ (Prefect flow)           │     Config says how to run (model, budget, gates)
+│ (LangGraph StateGraph)   │     Config says how to run (model, budget, gates)
 └──────────────────────────┘
 ```
 
@@ -136,6 +137,84 @@ The **extract** step parses the AI's output for code blocks, then writes each fi
 
 ---
 
+## Orchestration: LangGraph (v2.0)
+
+Version 2.0 migrates the pipeline orchestration from Prefect to [LangGraph](https://langchain-ai.github.io/langgraph/), a stateful graph framework for building agent workflows. The engine modules, state directory structure, audit trail, and dashboard are unchanged — only the orchestration layer was replaced.
+
+### Why LangGraph Over Prefect
+
+The original Prefect-based flow was a linear sequence of `@task`-decorated functions with `pause_flow_run()` for human-in-the-loop gates. It worked, but had three pain points that a graph-based orchestrator solves naturally:
+
+**Checkpoint-based resume.** If the pipeline fails at the test stage, Prefect re-runs from stage 1 — re-calling the LLM for design and implementation, burning $1-8 in API costs per re-run. LangGraph checkpoints state at every node boundary, so a failed run resumes from the last successful stage. For a pipeline that makes expensive LLM calls, this is the performance metric that matters most.
+
+**Graph-native retry loops.** When tests fail, the ideal behavior is "re-implement with the test failures as context, then re-test." In a linear flow, that requires custom retry logic or manual re-runs. In a graph, it's a conditional edge from `test` back to `implement`, bounded by a configurable retry budget. The graph makes this control flow explicit and testable.
+
+**Cleaner human-in-the-loop.** Prefect's `pause_flow_run()` requires the Prefect UI/API for decision input. LangGraph's `interrupt()` pauses the graph, serializes state to the checkpoint, and resumes with the decision injected via `Command(resume=...)`. No external UI dependency — the decision can come from a CLI, API, or dashboard.
+
+### Pipeline Graph
+
+```
+                         ┌─────────────────────────────────────────────────────────────┐
+                         │                   LangGraph StateGraph                      │
+                         │                                                             │
+                         │  ┌──────┐   ┌───────────┐   ┌────────┐   ┌───────────┐     │
+                         │  │      │   │           │   │        │   │           │     │
+                    ┌────┼──► init ├───► bootstrap ├───► design ├───► implement ├──┐  │
+                    │    │  │      │   │           │   │   ⏸    │   │           │  │  │
+                    │    │  └──────┘   └───────────┘   └────────┘   └───────────┘  │  │
+                    │    │                                                          │  │
+  invoke()          │    │  ┌──────────┐   ┌────────┐   ┌─────┐   ┌─────────┐     │  │
+  ─────────────────►│    │  │          │   │        │   │     │   │         │     │  │
+                    │    │  │ complete ◄───► verify ◄───► test◄───► extract ◄─────┘  │
+                    │    │  │          │   │   ⏸    │   │  ⏸  │   │         │        │
+                    │    │  └────┬─────┘   └────────┘   └──┬──┘   └─────────┘        │
+                    │    │       │                          │                          │
+                    │    │       ▼                     ┌────┴──────┐                   │
+                    │    │      END                    │  retry →  │                   │
+                    │    │                             │ implement │                   │
+                    │    │                             └───────────┘                   │
+                    │    └─────────────────────────────────────────────────────────────┘
+                    │
+                    │    ⏸ = interrupt() — pauses for human decision
+                    │    Conditional edges check stage results and route accordingly
+                    │    Any stage failure short-circuits to END
+                    │    Retry loop bounded by max_retries (default: 1)
+```
+
+### What Changed vs. What Stayed
+
+| Layer | v1.4 (Prefect) | v2.0 (LangGraph) |
+|-------|----------------|-------------------|
+| Orchestration | `@flow` / `@task` decorators, linear sequence | `StateGraph` with conditional edges and retry loops |
+| Human-in-the-loop | `pause_flow_run()` via Prefect UI | `interrupt()` with checkpoint-based resume |
+| State persistence | Re-run from scratch on failure | Checkpoint at every node, resume from last success |
+| Retry on test failure | Manual re-run or custom logic | Graph edge: `test → implement` (configurable budget) |
+| Engine modules | `engine/*.py` | **Unchanged** — orchestration-agnostic |
+| State directory | `state/` on disk | **Unchanged** — same structure, same files |
+| Audit trail | HMAC-SHA256 chain in `trace.jsonl` | **Unchanged** — same integrity guarantees |
+| Dashboard | Streamlit reading from `state/` | **Unchanged** — reads same artifacts |
+| LLM providers | `engine/llm_provider.py` (Claude + OpenAI) | **Unchanged** — no LangChain wrappers added |
+
+The migration was designed as an adapter layer: `graph/nodes.py` wraps the existing `tasks/*.py` functions, translating between LangGraph's state-passing model and the tasks' file-based I/O. The tasks don't know LangGraph exists. This means the 522 existing engine tests pass without modification.
+
+### Running with LangGraph
+
+```bash
+# New entry point (LangGraph orchestration)
+python graph/pipeline.py
+
+# With checkpoint persistence (resume on failure)
+python graph/pipeline.py --checkpoint-db state/checkpoints.sqlite
+
+# Resume an interrupted run
+python graph/pipeline.py --thread-id <thread-id> --checkpoint-db state/checkpoints.sqlite
+
+# Legacy entry point still works (requires: pip install autonomy-engine[prefect])
+python flows/autonomous_flow.py
+```
+
+---
+
 ## Core Principles
 
 1. **If it isn't written down, it doesn't exist** — pipeline stages communicate through files, not in-memory data. Everything is inspectable.
@@ -151,7 +230,7 @@ The **extract** step parses the AI's output for code blocks, then writes each fi
 
 This project was built with Claude as a development partner — architecture decisions, security model, code review, and implementation were all done in collaboration with AI. That's a deliberate choice, not an asterisk.
 
-The engineering value of this project lives in the decisions: why HMAC-SHA256 over plain hash chains, why contracts instead of freeform prompts, why Prefect over a hand-rolled state machine, where to draw the threat model boundary and document what's explicitly out of scope. Those decisions are mine. The ability to execute on them efficiently using AI tooling is the skill, not the shortcut.
+The engineering value of this project lives in the decisions: why HMAC-SHA256 over plain hash chains, why contracts instead of freeform prompts, why LangGraph's StateGraph over a hand-rolled state machine (and why it replaced Prefect in v2.0), where to draw the threat model boundary and document what's explicitly out of scope. Those decisions are mine. The ability to execute on them efficiently using AI tooling is the skill, not the shortcut.
 
 This is also a project *about* AI-supervised pipelines — building it with AI-assisted development is practicing what it preaches.
 
@@ -397,8 +476,7 @@ pip install -r requirements.lock
 pip install -e .
 cp .env.example .env               # add your ANTHROPIC_API_KEY
 python -m intake.intake new-project
-prefect server start               # separate terminal
-python flows/autonomous_flow.py
+python graph/pipeline.py           # LangGraph orchestration (v2.0)
 ```
 
 ## Setup (Development)

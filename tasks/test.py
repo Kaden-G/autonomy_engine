@@ -14,7 +14,7 @@ import re
 from pathlib import Path
 
 import yaml
-from prefect import task
+from engine.compat import task
 
 from engine.context import get_project_dir, get_state_dir
 from engine.contract_checker import check_contract_compliance

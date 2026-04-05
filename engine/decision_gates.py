@@ -26,8 +26,7 @@ from pathlib import Path
 from typing import Callable
 
 import yaml
-from prefect import pause_flow_run
-from prefect.input import RunInput
+from engine.compat import pause_flow_run, RunInput
 
 from engine.context import get_state_dir, get_templates_dir
 from engine.tracer import get_run_id, trace

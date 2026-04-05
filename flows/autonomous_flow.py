@@ -19,7 +19,7 @@ from engine.log_config import configure_logging
 
 configure_logging()
 
-from prefect import flow
+from engine.compat import flow
 
 from engine.cache import evict_stale_llm_cache
 from engine.context import get_state_dir, init as init_context

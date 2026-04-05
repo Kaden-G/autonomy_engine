@@ -5,7 +5,7 @@ exist, creates the run-specific directory structure, and records the first entry
 the audit log.  If any inputs are missing, the pipeline stops here with a clear error.
 """
 
-from prefect import task
+from engine.compat import task
 
 from engine.context import get_state_dir
 from engine.tracer import get_run_id, trace

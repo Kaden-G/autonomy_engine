@@ -12,7 +12,7 @@ May trigger a decision gate if the verdict is "reject" or "conditional accept."
 """
 
 import yaml
-from prefect import task
+from engine.compat import task
 
 from engine.cache import build_cache_key, cache_lookup, cache_save, hash_content, hash_params
 from engine.context import get_config_path, get_prompts_dir

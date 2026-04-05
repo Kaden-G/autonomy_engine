@@ -284,13 +284,17 @@ def run_pipeline(
 
         config["configurable"] = {"thread_id": uuid.uuid4().hex[:12]}
 
+    tid = config["configurable"]["thread_id"]
     logger.info(
         "Starting pipeline (thread_id=%s, project_dir=%s)",
-        config["configurable"]["thread_id"],
+        tid,
         project_dir or "engine root",
     )
 
     result = graph.invoke(initial_state, config=config)
+
+    # Attach thread_id to result so callers can resume interrupted graphs
+    result["_thread_id"] = tid
     return result
 
 
@@ -342,6 +346,19 @@ if __name__ == "__main__":
     if result.get("error"):
         logger.error("Pipeline failed: %s", result["error"])
         exit(1)
-    else:
+    elif result.get("current_stage") == "complete":
         logger.info("Pipeline completed successfully.")
+        exit(0)
+    else:
+        # Graph was interrupted (e.g., human decision required at a gate).
+        # With a persistent checkpointer, resume with:
+        #   python graph/pipeline.py --thread-id <id> --checkpoint-db <db>
+        stage = result.get("current_stage", "unknown")
+        tid = result.get("_thread_id", "unknown")
+        logger.info(
+            "Pipeline paused at '%s' stage — awaiting human decision. "
+            "To resume: python graph/pipeline.py --thread-id %s --checkpoint-db <db>",
+            stage,
+            tid,
+        )
         exit(0)

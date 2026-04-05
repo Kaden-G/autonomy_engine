@@ -187,8 +187,60 @@ Rules:
 # ── JSON / manifest helpers ──────────────────────────────────────────────────
 
 
+def _repair_json(raw: str) -> str | None:
+    """Attempt lightweight repairs on malformed LLM JSON.
+
+    LLMs commonly produce JSON with:
+    - Trailing commas before closing braces/brackets
+    - Missing commas between elements
+    - Truncated output (unterminated strings, missing closing braces)
+
+    This does NOT attempt to be a general-purpose JSON fixer — it handles
+    the specific failure modes we see from code-generation LLMs. Returns
+    the repaired string if successful, None if repair fails.
+
+    Security note: This only adds/removes punctuation. It never modifies
+    string content or injects new keys, so it can't change the semantic
+    meaning of the manifest.
+    """
+    import re as _re
+
+    # Pass 1: strip trailing commas before } or ]
+    # e.g., {"a": 1,} → {"a": 1}
+    repaired = _re.sub(r",\s*([}\]])", r"\1", raw)
+
+    # Pass 2: add missing commas between elements
+    # e.g., "value"\n"key" → "value",\n"key"
+    # and   }\n{ → },\n{  and  ]\n[ → ],\n[
+    repaired = _re.sub(r'"\s*\n(\s*")', r'",\n\1', repaired)
+    repaired = _re.sub(r"}\s*\n(\s*{)", r"},\n\1", repaired)
+    repaired = _re.sub(r"]\s*\n(\s*\[)", r"],\n\1", repaired)
+
+    # Pass 3: close unterminated structures (truncated output)
+    # Count open vs close braces/brackets and append missing closers
+    open_braces = repaired.count("{") - repaired.count("}")
+    open_brackets = repaired.count("[") - repaired.count("]")
+    if open_braces > 0 or open_brackets > 0:
+        # Terminate any open string first
+        if repaired.count('"') % 2 != 0:
+            repaired += '"'
+        repaired += "]" * max(0, open_brackets)
+        repaired += "}" * max(0, open_braces)
+
+    try:
+        json.loads(repaired)
+        return repaired
+    except json.JSONDecodeError:
+        return None
+
+
 def _extract_json(raw: str) -> str:
-    """Strip optional ```json fences and validate JSON syntax."""
+    """Strip optional ```json fences and validate JSON syntax.
+
+    If initial parse fails, attempts lightweight repair for common LLM
+    JSON mistakes (trailing commas, missing commas, truncated output)
+    before raising.
+    """
     raw = raw.strip()
     if raw.startswith("```"):
         first_newline = raw.index("\n")
@@ -197,9 +249,18 @@ def _extract_json(raw: str) -> str:
         raw = raw[: raw.rfind("```")].rstrip()
     try:
         json.loads(raw)
+        return raw
     except json.JSONDecodeError as exc:
+        # Attempt repair before giving up
+        repaired = _repair_json(raw)
+        if repaired is not None:
+            logger.warning(
+                "Manifest JSON had syntax errors — auto-repaired. "
+                "Original error: %s",
+                exc,
+            )
+            return repaired
         raise RuntimeError(f"Manifest JSON is malformed: {exc}") from exc
-    return raw
 
 
 def _split_response(response: str) -> tuple[str | None, str | None]:

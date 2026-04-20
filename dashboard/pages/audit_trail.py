@@ -119,7 +119,7 @@ def render(project_dir):
 
     # Raw trace export
     st.subheader("Export")
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         trace_json = json.dumps(entries, indent=2)
         st.download_button(
@@ -149,3 +149,45 @@ def render(project_dir):
             file_name=f"audit_{selected}.json",
             mime="application/json",
         )
+    with col3:
+        bundle_bytes = _build_audit_bundle(project_dir, selected)
+        if bundle_bytes is not None:
+            st.download_button(
+                "Download Full Bundle (.tar.gz)",
+                data=bundle_bytes,
+                file_name=f"{selected}_audit.tar.gz",
+                mime="application/gzip",
+                help="Complete audit bundle: trace, config snapshot, evidence, "
+                "decisions, artifact manifest, and integrity check.",
+            )
+
+
+def _build_audit_bundle(project_dir, run_id: str) -> bytes | None:
+    """Produce the same .tar.gz as `python -m engine.report --run-id <id>`.
+
+    Runs `engine.report.create_bundle` into a tempfile, reads the bytes
+    back out for st.download_button, cleans up. Returns None on failure
+    so the UI can fall back gracefully.
+    """
+    import tempfile
+    from pathlib import Path
+
+    try:
+        import engine.context
+        from engine.report import create_bundle
+
+        # The bundle reader reads from engine.context.get_state_dir(), so
+        # we must point it at this project's directory before bundling.
+        engine.context.init(Path(project_dir))
+
+        with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+        try:
+            create_bundle(run_id, tmp_path)
+            return tmp_path.read_bytes()
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
+    except Exception as e:
+        st.warning(f"Could not build audit bundle: {e}")
+        return None

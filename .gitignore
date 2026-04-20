@@ -59,6 +59,9 @@ htmlcov/
 .coverage
 coverage.xml
 
+# Streamlit secrets — contains API keys for cloud deployment, never commit
+.streamlit/secrets.toml
+
 # OS
 .DS_Store
 Thumbs.db

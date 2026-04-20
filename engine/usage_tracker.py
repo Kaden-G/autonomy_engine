@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from engine.context import get_state_dir
+from engine.model_registry import get_model_pricing
 
 logger = logging.getLogger(__name__)
 
@@ -145,32 +146,14 @@ class UsageReport:
         )
 
 
-# ── Pricing (mirrors cost_estimator.py) ──────────────────────────────────────
-
-_PRICING: dict[str, dict[str, float]] = {
-    "claude-opus-4": {"input": 15.00, "output": 75.00},
-    "claude-sonnet-4": {"input": 3.00, "output": 15.00},
-    "claude-haiku-4": {"input": 0.80, "output": 4.00},
-    "claude-3-5-sonnet": {"input": 3.00, "output": 15.00},
-    "claude-3-5-haiku": {"input": 0.80, "output": 4.00},
-    "claude-3-opus": {"input": 15.00, "output": 75.00},
-    "gpt-4o": {"input": 2.50, "output": 10.00},
-    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
-    "gpt-4-turbo": {"input": 10.00, "output": 30.00},
-    "o1": {"input": 15.00, "output": 60.00},
-    "o3-mini": {"input": 1.10, "output": 4.40},
-}
+# ── Pricing ──────────────────────────────────────────────────────────────────
+# Delegates to engine.model_registry so pricing stays in sync with models.yml
+# (cost_estimator uses the same path — single source of truth).
 
 
 def _resolve_pricing_for_model(model: str) -> dict[str, float]:
-    """Prefix-match model to pricing table."""
-    best_key, best_len = None, 0
-    for key in _PRICING:
-        if model.startswith(key) and len(key) > best_len:
-            best_key, best_len = key, len(key)
-    if best_key:
-        return _PRICING[best_key]
-    return {"input": 0.0, "output": 0.0}
+    """Look up per-1M-token pricing from the shared models.yml registry."""
+    return get_model_pricing(model) if model else {"input": 0.0, "output": 0.0}
 
 
 # ── Core functions ────────────────────────────────────────────────────────────

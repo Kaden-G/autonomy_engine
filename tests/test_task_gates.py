@@ -101,6 +101,7 @@ class TestTestSystemGate:
         from tasks.test import test_system
 
         test_system.fn()  # should not raise
+        assert mock_save_state.called, "state file should be written on clean pass"
 
     @patch("tasks.test.trace")
     @patch("tasks.test.save_state_file")
@@ -130,6 +131,7 @@ class TestTestSystemGate:
         from tasks.test import test_system
 
         test_system.fn()  # should not raise — decision exists
+        assert mock_save_state.called, "state file should be written when bypassing via decision"
 
     def test_abort_decision_raises_runtime_error(self):
         """When a previous triage decision was abort, RuntimeError is raised."""
@@ -223,6 +225,8 @@ class TestVerifySystemGate:
         from tasks.verify import verify_system
 
         verify_system.fn()  # should not raise
+        assert provider.generate.called, "LLM provider should be invoked for verify"
+        assert mock_save_state.called, "VERIFICATION.md should be written on approved verdict"
 
     @patch("tasks.verify.trace")
     @patch("tasks.verify.save_state_file")
@@ -260,6 +264,7 @@ class TestVerifySystemGate:
         from tasks.verify import verify_system
 
         verify_system.fn()  # should not raise
+        assert mock_save_state.called, "VERIFICATION.md should be written for approved-with-caveats"
 
     def test_reject_decision_raises_runtime_error(self):
         """When a previous review decision was reject, RuntimeError is raised."""

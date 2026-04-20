@@ -26,6 +26,7 @@ from graph.pipeline import (
     route_after_test,
     route_after_verify,
 )
+from graph.nodes import implement_node
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -229,6 +230,88 @@ class TestRouteAfterTest:
             "retry_count": 0,
             "max_retries": 1,
         }
+        assert route_after_test(state) == "__end__"
+
+
+class TestImplementNodeRetryBudget:
+    """Regression tests: implement_node must increment retry_count on re-entry.
+
+    Without this, route_after_test can never exhaust the retry budget —
+    retry_count stays at 0 forever and the test → implement loop runs until
+    LangGraph's recursion limit trips. See graph/state.py::retry_count docstring.
+    """
+
+    def test_first_call_does_not_increment(self):
+        """Initial implement run has no prior implement result — retry_count stays 0."""
+        state: PipelineState = {
+            "stage_results": {},
+            "retry_count": 0,
+            "max_retries": 1,
+        }
+        with patch("graph.nodes.implement_system"):
+            update = implement_node(state)
+        assert "retry_count" not in update
+
+    def test_retry_call_increments(self):
+        """Re-entry (prior implement result in state) must increment retry_count."""
+        state: PipelineState = {
+            "stage_results": {
+                "implement": StageResult(status=StageStatus.PASSED),
+                "test": StageResult(status=StageStatus.FAILED, error="tests failed"),
+            },
+            "retry_count": 0,
+            "max_retries": 1,
+        }
+        with patch("graph.nodes.implement_system"):
+            update = implement_node(state)
+        assert update["retry_count"] == 1
+
+    def test_retry_increment_on_implement_failure(self):
+        """Even if implement itself raises, retry_count must still increment."""
+        state: PipelineState = {
+            "stage_results": {
+                "implement": StageResult(status=StageStatus.PASSED),
+                "test": StageResult(status=StageStatus.FAILED, error="tests failed"),
+            },
+            "retry_count": 2,
+            "max_retries": 3,
+        }
+        with patch("graph.nodes.implement_system", side_effect=RuntimeError("boom")):
+            update = implement_node(state)
+        assert update["retry_count"] == 3
+        assert update["stage_results"]["implement"].status == StageStatus.FAILED
+
+    def test_budget_actually_exhausts(self):
+        """End-to-end: simulate implement → test-fail loop until route_after_test ends."""
+        state: PipelineState = {
+            "stage_results": {},
+            "retry_count": 0,
+            "max_retries": 2,
+        }
+        # Iteration 1 (first implement) — no prior implement, no increment.
+        with patch("graph.nodes.implement_system"):
+            state.update(implement_node(state))
+        state["stage_results"]["test"] = StageResult(
+            status=StageStatus.FAILED, error="fail"
+        )
+        assert route_after_test(state) == "implement"
+
+        # Iteration 2 (retry 1) — prior implement present, retry_count → 1.
+        with patch("graph.nodes.implement_system"):
+            state.update(implement_node(state))
+        assert state["retry_count"] == 1
+        state["stage_results"]["test"] = StageResult(
+            status=StageStatus.FAILED, error="fail"
+        )
+        assert route_after_test(state) == "implement"
+
+        # Iteration 3 (retry 2) — retry_count → 2, budget hit on next test-fail.
+        with patch("graph.nodes.implement_system"):
+            state.update(implement_node(state))
+        assert state["retry_count"] == 2
+        state["stage_results"]["test"] = StageResult(
+            status=StageStatus.FAILED, error="fail"
+        )
         assert route_after_test(state) == "__end__"
 
 

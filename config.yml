@@ -32,12 +32,12 @@ sandbox:
   install_deps: true   # install requirements.txt / pyproject.toml in the sandbox
 
 # Verify stage mode:
-#   always_llm  — always call the LLM for verification (default, original behavior)
-#   auto        — skip LLM when evidence makes outcome obvious
+#   always_llm  — always call the LLM for verification (original v1.x behavior)
+#   auto        — skip LLM when evidence makes outcome obvious (default)
 #   never_llm   — always write deterministic VERIFICATION.md, never call LLM
 # llm_on_fail_summary / llm_on_pass_summary only apply in auto mode.
 verify:
-  mode: always_llm
+  mode: auto
   llm_on_fail_summary: true
   llm_on_pass_summary: true
 

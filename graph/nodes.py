@@ -431,12 +431,24 @@ def implement_node(state: PipelineState) -> dict[str, Any]:
     add a gate if the implementation deviates significantly from the contract.
     """
     logger.info("Starting implementation...")
+
+    # Re-entries via the test → implement retry edge must increment retry_count;
+    # route_after_test relies on it to bound the loop. Detect a retry by a prior
+    # implement StageResult in state.
+    prior_results = state.get("stage_results", {})
+    is_retry = "implement" in prior_results
+    retry_update: dict[str, Any] = (
+        {"retry_count": state.get("retry_count", 0) + 1} if is_retry else {}
+    )
+    if is_retry:
+        logger.info("Implement retry %d", retry_update["retry_count"])
+
     try:
         implement_system()
         return {
             "current_stage": "implement",
             "stage_results": {
-                **state.get("stage_results", {}),
+                **prior_results,
                 "implement": StageResult(
                     status=StageStatus.PASSED,
                     artifacts=[
@@ -445,19 +457,21 @@ def implement_node(state: PipelineState) -> dict[str, Any]:
                     ],
                 ),
             },
+            **retry_update,
         }
     except Exception as e:
         logger.error("Implementation failed: %s", e)
         return {
             "current_stage": "implement",
             "stage_results": {
-                **state.get("stage_results", {}),
+                **prior_results,
                 "implement": StageResult(
                     status=StageStatus.FAILED,
                     error=str(e),
                 ),
             },
             "error": f"Implementation failed: {e}",
+            **retry_update,
         }
 
 

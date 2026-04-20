@@ -1,7 +1,7 @@
 # Autonomy Engine v2.0
 
 ![CI](https://github.com/Kaden-G/autonomy-engine/actions/workflows/ci.yml/badge.svg)
-![Tests](https://img.shields.io/badge/tests-551%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-569%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-61%25%20engine-blue)
 ![Security](https://img.shields.io/badge/bandit-1%20known%20%7C%200%20unexpected-yellow)
 ![Deps](https://img.shields.io/badge/pip--audit-0%20project%20vulns-brightgreen)
@@ -12,6 +12,14 @@
 An autonomous software build pipeline that turns a project description into working, tested code — with human approval gates, tamper-evident audit trails, and strict quality contracts that keep AI-generated output on-spec.
 
 Built on [LangGraph](https://langchain-ai.github.io/langgraph/) (stateful graph orchestration) and compatible with Claude and OpenAI as the underlying AI models.
+
+---
+
+## Live Demo
+
+> **[Try the Autonomy Engine without an API key](https://kaden-g-solo.streamlit.app)**
+
+The hosted demo runs off a trimmed mirror of this repo (`kaden-g/solo`) and is limited to 3 pipeline runs per session. For unlimited access, clone this repo — see [Quickstart](#quickstart-60-seconds) below.
 
 ---
 
@@ -269,10 +277,10 @@ Results are saved as structured evidence records that feed into testing and veri
 Before launching a build, you choose a tier that controls the AI's output budget and cost:
 
 - **Premium** — full output budget, no scope restrictions, higher AI cost. Best for production-quality output with thorough documentation.
-- **MVP (Minimum Viable)** — hard limits enforced at every level. Best for quick prototyping or cost-conscious builds.
-  - Design: max 5 components, 40 files
-  - Per-chunk implementation: max 10 files
-  - Extraction safety cutoff: 80 files / 750 KB
+- **MVP (Minimum Viable)** — tighter scope guidance plus a hard extraction cutoff. Best for quick prototyping or cost-conscious builds.
+  - Design: max 5 components, 40 files *(advisory — injected into the design prompt)*
+  - Per-chunk implementation: max 10 files *(advisory — injected into the implement prompt; not enforced mid-run)*
+  - Extraction safety cutoff: 80 files / 750 KB *(enforced — the extract stage circuit-breaks if exceeded)*
   - Dashboard shows estimated savings vs. Premium before you commit
 
 ---
@@ -527,6 +535,24 @@ Or use the **Create Project** page in the dashboard for a form-based experience 
 
 ### Step 2: Run the engine
 
+Primary (v2.0 — LangGraph):
+
+```bash
+# Run the pipeline
+python graph/pipeline.py
+
+# Run against an external project directory
+python graph/pipeline.py --project-dir ~/projects/solo1
+
+# With checkpoint persistence (resumable across restarts)
+python graph/pipeline.py --checkpoint-db state/checkpoints.sqlite
+```
+
+The engine will refuse to start if intake has not been completed. Gate approvals surface inline via LangGraph's `interrupt()` (no external UI required) — or use the **Run Pipeline** page in the dashboard for tier selection, cost estimates, and live monitoring.
+
+<details>
+<summary><b>Legacy (v1.x — Prefect)</b>: still works if you install with <code>pip install "autonomy-engine[prefect]"</code>.</summary>
+
 ```bash
 # Start Prefect server (separate terminal)
 prefect server start
@@ -538,9 +564,9 @@ python flows/autonomous_flow.py
 python flows/autonomous_flow.py --project-dir ~/projects/solo1
 ```
 
-The engine will refuse to start if intake has not been completed. The Prefect UI is available at `http://localhost:4200` for monitoring and gate approvals.
+The Prefect UI is available at `http://localhost:4200` for monitoring and gate approvals. New projects should prefer `graph/pipeline.py` — the Prefect entry point is kept for backward compatibility.
 
-Or use the **Run Pipeline** page in the dashboard for tier selection, cost estimates, and live monitoring.
+</details>
 
 ### Output
 
@@ -597,7 +623,7 @@ sandbox:
   install_deps: true
 
 verify:
-  mode: always_llm         # always_llm | auto | never_llm
+  mode: auto               # always_llm | auto (default) | never_llm
   llm_on_fail_summary: true
   llm_on_pass_summary: true
 
@@ -668,8 +694,8 @@ Responses are cached based on the exact inputs (prompt, model, parameters). If y
 
 The verification stage supports three modes to balance thoroughness against cost:
 
-- **`always_llm`** — always use the AI for verification analysis (default)
-- **`auto`** — skip the AI when test results make the outcome obvious (all passed or all failed)
+- **`always_llm`** — always use the AI for verification analysis (original v1.x behavior)
+- **`auto`** — skip the AI when test results make the outcome obvious, i.e. all passed or all failed (default)
 - **`never_llm`** — purely rule-based verification with structured issue breakdown (zero AI cost)
 
 ### Sandbox Caching

@@ -47,6 +47,99 @@ def _clear_form():
         st.session_state[key] = default
 
 
+def _run_llm_suggestions() -> None:
+    """Call intake._generate_spec_suggestions() with the form's seed fields.
+
+    On success, merge the generated requirements/acceptance/artifacts into the
+    form session_state so the user can review and edit. Gated by the shared
+    rate limiter so hosted-demo visitors can't exhaust the budget.
+    """
+    from dashboard.rate_limiter import check_rate_limit
+    from intake.intake import _generate_spec_suggestions
+
+    if not check_rate_limit():
+        # check_rate_limit() already showed the user a warning.
+        return
+
+    seed = {
+        "name": st.session_state.get("cp_name", "").strip(),
+        "description": st.session_state.get("cp_description", "").strip(),
+        "domain": st.session_state.get("cp_domain", "software"),
+    }
+
+    with st.spinner("Generating draft from your description…"):
+        suggestions = _generate_spec_suggestions(seed)
+
+    if not suggestions:
+        st.error(
+            "Generation failed — the LLM did not return a valid spec. "
+            "Check the logs for details and try again, or fill in the fields manually."
+        )
+        return
+
+    # Merge generated fields into the form. _generate_spec_suggestions returns
+    # lists for the text-area fields; join with newlines so the form renders
+    # them naturally. Only overwrite fields the generator actually populated.
+    field_map = {
+        "functional": "cp_functional",
+        "non_functional": "cp_non_functional",
+        "tech_stack": "cp_tech_stack",
+        "non_goals": "cp_non_goals",
+        "acceptance": "cp_acceptance",
+        "artifacts": "cp_artifacts",
+    }
+    for src_key, form_key in field_map.items():
+        val = suggestions.get(src_key)
+        if isinstance(val, list):
+            st.session_state[form_key] = "\n".join(val)
+        elif isinstance(val, str) and val.strip():
+            st.session_state[form_key] = val
+
+    # Scalar constraint fields sometimes come back as plain strings.
+    for src_key, form_key in [("performance", "cp_performance"), ("security", "cp_security")]:
+        val = suggestions.get(src_key)
+        if isinstance(val, str) and val.strip():
+            st.session_state[form_key] = val
+
+    st.success("Draft generated. Review the form below and adjust anything before submitting.")
+    st.rerun()
+
+
+def _parse_uploaded_yaml(uploaded_file) -> dict:
+    """Parse an uploaded YAML into a ProjectSpec without side effects.
+
+    Returns ``{"ok": True, "spec": ProjectSpec}`` on success or
+    ``{"ok": False, "error": str}`` with a short human-readable error
+    string suitable for `st.error()`.
+    """
+    import yaml
+
+    try:
+        raw = uploaded_file.getvalue().decode("utf-8")
+    except Exception as e:
+        return {"ok": False, "error": f"Could not read file: {e}"}
+
+    try:
+        data = yaml.safe_load(raw)
+    except yaml.YAMLError as e:
+        return {"ok": False, "error": f"YAML parse error: {e}"}
+
+    if not isinstance(data, dict):
+        return {"ok": False, "error": "YAML must contain a mapping at the top level."}
+
+    try:
+        spec = ProjectSpec(**data)
+    except ValidationError as e:
+        # Collapse pydantic errors into a short bullet list for the UI.
+        bullets = "\n".join(
+            f"• {'/'.join(str(p) for p in err['loc'])}: {err['msg']}"
+            for err in e.errors()
+        )
+        return {"ok": False, "error": f"Validation failed:\n{bullets}"}
+
+    return {"ok": True, "spec": spec}
+
+
 def _load_spec_into_form(spec: dict):
     """Populate the form fields from a project_spec.yml dict."""
     project = spec.get("project", {})
@@ -123,6 +216,63 @@ def render(project_dir):
             if st.button("View Run History", use_container_width=True):
                 st.session_state["page"] = "Inspector"
                 st.rerun()
+
+    # ── LLM-powered intake suggestions ──────────────────────────────────
+    # Matches the CLI's `new-project` flow, which offers LLM generation
+    # of functional/non-functional/acceptance/artifacts from a project seed.
+    # Gated by the session rate limiter on the hosted demo so a visitor
+    # can't burn API tokens in a loop.
+    with st.expander("Generate draft from description (uses an API call)"):
+        st.caption(
+            "Fill in Project Name, Description, and Domain below first. "
+            "Clicking Generate will call the configured LLM to draft the rest "
+            "of the spec. This counts as one action against the demo rate limit."
+        )
+        if st.button(
+            "Generate draft",
+            use_container_width=True,
+            disabled=not (
+                st.session_state.get("cp_name", "").strip()
+                and st.session_state.get("cp_description", "").strip()
+            ),
+        ):
+            _run_llm_suggestions()
+
+    # ── YAML spec import + standalone validation ────────────────────────
+    # Matches the CLI's `intake from-file` and `intake validate` subcommands.
+    with st.expander("Import from YAML / validate-only"):
+        uploaded = st.file_uploader(
+            "Upload a project_spec.yml",
+            type=["yml", "yaml"],
+            key="cp_yaml_upload",
+            help="Same format as `python -m intake.intake from-file ...`.",
+        )
+        if uploaded is not None:
+            col_a, col_b = st.columns(2)
+            parsed = _parse_uploaded_yaml(uploaded)
+            with col_a:
+                if st.button(
+                    "Validate only",
+                    use_container_width=True,
+                    help="Check schema conformance; don't touch the form or state/.",
+                ):
+                    if parsed["ok"]:
+                        st.success("Spec is valid — no fields were modified.")
+                    else:
+                        st.error(parsed["error"])
+            with col_b:
+                if st.button(
+                    "Import into form",
+                    type="primary",
+                    use_container_width=True,
+                    help="Populate the form below from the YAML. You still need to submit.",
+                ):
+                    if parsed["ok"]:
+                        _load_spec_into_form(parsed["spec"].model_dump())
+                        st.success(f"Imported '{parsed['spec'].project.name}'. Review and submit below.")
+                        st.rerun()
+                    else:
+                        st.error(parsed["error"])
 
     # Show past runs summary if we have any
     if runs and current_spec:

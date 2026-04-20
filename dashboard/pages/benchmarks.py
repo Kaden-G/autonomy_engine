@@ -321,5 +321,57 @@ def render(project_dir):
             delta=pct_delta(old_bytes, new_bytes),
             delta_color="inverse",
         )
+
+        # Per-stage timing delta table — matches `bench/compare_results.py`.
+        # A regression in verify/design is useful to see; aggregate alone hides it.
+        old_stages = old_agg.get("per_stage_time_stats", {})
+        new_stages = new_agg.get("per_stage_time_stats", {})
+        all_stages = sorted(set(old_stages) | set(new_stages))
+        if all_stages:
+            st.markdown(
+                '<p style="font-size:13px; font-weight:600; margin:12px 0 4px;">'
+                'Per-Stage Wall Time (mean seconds)</p>',
+                unsafe_allow_html=True,
+            )
+            rows = []
+            for stage in all_stages:
+                o = old_stages.get(stage, {}).get("mean", 0)
+                n = new_stages.get(stage, {}).get("mean", 0)
+                rows.append(
+                    {
+                        "stage": stage,
+                        "baseline": round(o, 2),
+                        "current": round(n, 2),
+                        "delta": pct_delta(o, n),
+                    }
+                )
+            st.dataframe(rows, use_container_width=True, hide_index=True)
+
+        # Per-stage LLM call counts — matches `bench/compare_results.py`
+        # "Calls by stage" block.
+        old_llm = old_agg.get("llm", {})
+        new_llm = new_agg.get("llm", {})
+        old_cbs = old_llm.get("calls_by_stage") or old_agg.get("mean_model_calls_by_stage") or {}
+        new_cbs = new_llm.get("calls_by_stage") or new_agg.get("mean_model_calls_by_stage") or {}
+        llm_stages = sorted(set(old_cbs) | set(new_cbs))
+        if llm_stages:
+            st.markdown(
+                '<p style="font-size:13px; font-weight:600; margin:12px 0 4px;">'
+                'LLM Calls by Stage</p>',
+                unsafe_allow_html=True,
+            )
+            rows = []
+            for stage in llm_stages:
+                o = old_cbs.get(stage, 0)
+                n = new_cbs.get(stage, 0)
+                rows.append(
+                    {
+                        "stage": stage,
+                        "baseline": o,
+                        "current": n,
+                        "delta": pct_delta(o, n),
+                    }
+                )
+            st.dataframe(rows, use_container_width=True, hide_index=True)
     else:
         st.info("Run benchmarks at two different commits to enable comparison.")

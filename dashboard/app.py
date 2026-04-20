@@ -25,6 +25,8 @@ from dashboard.pages import (
     run_outputs,
     run_pipeline,
 )
+from dashboard.rate_limiter import get_remaining_runs
+from dashboard.secrets_bridge import inject_secrets
 from dashboard.theme import (
     GLOBAL_CSS,
     MUTED,
@@ -44,6 +46,24 @@ st.set_page_config(
 # -- Global Theme CSS -----------------------------------------------------
 
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
+
+# -- Secrets Bridge -------------------------------------------------------
+# On Streamlit Cloud, API keys live in st.secrets.  The engine expects them
+# in os.environ (via python-dotenv).  This one-liner bridges the gap so the
+# pipeline subprocess inherits the keys.  Locally, .env takes precedence.
+
+inject_secrets()
+
+# -- Demo Banner ----------------------------------------------------------
+# Visible to all visitors.  Shows remaining runs so recruiters know they
+# have budget to experiment, and links to the repo for full access.
+
+_remaining = get_remaining_runs()
+st.info(
+    f"**Live Demo** — {_remaining} pipeline run(s) remaining in this session. "
+    "[Clone the repo](https://github.com/kaden-g/solo) for unlimited access "
+    "with your own API key."
+)
 
 # -- Project Directory Resolution -----------------------------------------
 

@@ -7,6 +7,7 @@ import time
 import streamlit as st
 
 from dashboard.components.page_header import render_page_description
+from dashboard.rate_limiter import check_rate_limit, get_remaining_runs
 from dashboard.components.pipeline_visual import render_pipeline
 from dashboard.components.trace_timeline import render_timeline
 from dashboard.data_loader import (
@@ -267,6 +268,13 @@ def render(project_dir):
     if st.session_state.get("show_tier_selection") and not is_running:
         selected = _render_cost_estimate(project_dir)
         if selected:
+            # ── Demo rate limiter ──────────────────────────────────────
+            # Gate the launch: if the visitor has exhausted their session
+            # budget, show a friendly message and skip the subprocess.
+            if not check_rate_limit():
+                st.session_state.pop("show_tier_selection", None)
+                st.stop()
+
             process = subprocess.Popen(
                 [
                     sys.executable,
@@ -303,7 +311,10 @@ def render(project_dir):
                 st.rerun()
 
         with col_status:
-            if is_running:
+            remaining = get_remaining_runs()
+            if remaining == 0:
+                st.warning("Demo limit reached — refresh or clone the repo for more runs.")
+            elif is_running:
                 st.info("Pipeline is running…")
             elif proc is not None:
                 rc = proc.poll()

@@ -120,6 +120,59 @@ def _resolve_actor() -> str:
     return f"human:{user}" if user else "human"
 
 
+# ── Helper: persist pending-gate marker for out-of-process UIs ──────────────
+
+
+def _pending_gate_path(state: PipelineState):
+    """Path to the pending-gate marker file for this run, or None if run_id unset."""
+    from engine.context import get_state_dir
+
+    run_id = state.get("run_id")
+    if not run_id:
+        return None
+    return get_state_dir() / "runs" / run_id / "pending_gate.json"
+
+
+def _write_pending_gate(state: PipelineState, exc: DecisionRequired) -> None:
+    """Drop a pending_gate.json the dashboard can poll before interrupt() fires.
+
+    Why a file instead of relying on LangGraph's checkpoint: the dashboard polls
+    from a different process than the one that pauses, and reading the checkpoint
+    there means reopening the SQLite DB + rebuilding the graph on every rerun.
+    A ~200-byte JSON file is the cheap path.
+    """
+    import json
+
+    path = _pending_gate_path(state)
+    if path is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "gate": exc.gate,
+                    "stage": exc.stage,
+                    "options": exc.options,
+                    "message": f"Decision required: {exc.gate}",
+                }
+            )
+        )
+    except OSError as e:
+        logger.warning("Could not write pending_gate.json: %s", e)
+
+
+def _clear_pending_gate(state: PipelineState) -> None:
+    """Remove the pending marker after the gate resolves."""
+    path = _pending_gate_path(state)
+    if path is None or not path.exists():
+        return
+    try:
+        path.unlink()
+    except OSError as e:
+        logger.warning("Could not remove pending_gate.json: %s", e)
+
+
 # ── Helper: handle decision gate logic ──────────────────────────────────────
 
 
@@ -168,6 +221,11 @@ def _handle_decision_gate(exc: DecisionRequired, state: PipelineState) -> Decisi
     # LangGraph serializes this state to the checkpoint, then pauses.
     # The caller resumes the graph with a Command containing the decision.
     logger.info("Pausing for human decision at gate '%s'", exc.gate)
+
+    # Persist gate metadata so out-of-process callers (e.g. the dashboard)
+    # can surface it without importing langgraph or reopening the checkpoint.
+    _write_pending_gate(state, exc)
+
     human_input = interrupt(
         {
             "gate": exc.gate,
@@ -176,6 +234,9 @@ def _handle_decision_gate(exc: DecisionRequired, state: PipelineState) -> Decisi
             "message": f"Decision required: {exc.gate}",
         }
     )
+
+    # Resume path — decision is in, clear the pending marker.
+    _clear_pending_gate(state)
 
     # When resumed, human_input contains the decision dict
     # Expected shape: {"choice": "accept", "rationale": "Looks good"}

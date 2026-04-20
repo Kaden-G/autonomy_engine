@@ -395,6 +395,8 @@ Extracted Python files are validated for correct syntax, resolvable imports, and
 
 API keys are loaded from a `.env` file (which is excluded from version control) and never appear in audit logs, prompts, or output. A pre-commit hook rejects any attempt to commit files containing key patterns.
 
+**Streamlit Cloud / multi-tenant caveat.** When the dashboard runs on Streamlit Cloud, `dashboard/secrets_bridge.py` copies keys from `st.secrets` into `os.environ` so the pipeline subprocess inherits them. This is safe on Streamlit Cloud because every visitor gets their own container, but session-scoped env vars are visible to all subprocesses spawned by that instance. If you self-host in a shared multi-tenant setup, swap this bridge for a real secrets manager (AWS Secrets Manager, Vault, etc.).
+
 ### Sharing the project safely
 
 When sharing this project as a zip (e.g., for code review), use:
@@ -800,7 +802,8 @@ engine/               Core engine modules
   tracer.py           Tamper-evident audit log (HMAC-SHA256 hash chain)
   evidence.py         Test runner — auto-detects checks, captures structured results
   report.py           Audit bundle exporter (compressed archive with full run data)
-  notifier.py         Notification stub (swap in Slack/email/PagerDuty)
+  notifier.py         Notification stub — logs-only by default; intentional
+                      extension point (swap in Slack/email/PagerDuty)
   design_contract.py  Design contract schema, validation (15+ checks), extraction
   contract_checker.py Post-build compliance check — did the AI follow the contract?
   spec_normalizer.py  Normalizes user input, flags ambiguity, structures for design
@@ -809,7 +812,12 @@ engine/               Core engine modules
   usage_tracker.py    Post-run actual vs. projected token usage comparison
   cache.py            Deterministic AI response caching with TTL eviction
 
-flows/                Prefect flow definition — the main pipeline entry point
+graph/                LangGraph orchestration (v2.0 — primary entry point)
+  pipeline.py         StateGraph, conditional edges, retry loop, checkpointing
+  nodes.py            Thin adapters over tasks/*.py (one node per stage)
+  state.py            PipelineState TypedDict — the shape of run state
+
+flows/                Prefect flow definition (legacy v1.x — still supported)
 tasks/                Individual pipeline stages (one file per stage)
   bootstrap.py        Input validation and audit log initialization
   design.py           Architecture and design contract generation (AI-powered)
@@ -853,6 +861,7 @@ docker-compose.yml    One-command launch with volume mounts
 .github/workflows/
   ci.yml              GitHub Actions: lint, test (3.10–3.12), import check, security
 
-tests/                Automated test suite (536 tests, 61% engine coverage)
+tests/                Automated test suite (569 tests, 61% engine coverage)
 bench/                Performance benchmarking tools
+specs/                Reference spec files for manual testing (not consumed by the pipeline)
 ```

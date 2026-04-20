@@ -11,11 +11,14 @@ from dashboard.rate_limiter import check_rate_limit, get_remaining_runs
 from dashboard.components.pipeline_visual import render_pipeline
 from dashboard.components.trace_timeline import render_timeline
 from dashboard.data_loader import (
+    find_project_dir,
     get_latest_run_id,
     get_pipeline_status,
     is_intake_complete,
     list_runs,
     load_evidence,
+    load_pending_gate,
+    load_run_status,
     load_trace,
 )
 from dashboard.theme import (
@@ -240,6 +243,91 @@ def _render_completion_status(project_dir):
                 )
 
 
+# ── Pending-gate form (human-in-the-loop) ───────────────────────────────────
+
+
+def _resume_graph(project_dir, run_id: str, thread_id: str, choice: str, rationale: str) -> dict:
+    """Resume an interrupted graph with the user's decision.
+
+    Runs in-process (not a subprocess) because langgraph is already imported
+    and we have the checkpoint path. Returns the final state dict so the
+    caller can decide whether the graph paused again at another gate.
+    """
+    import sqlite3
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    from langgraph.types import Command
+    from graph.pipeline import build_graph, _write_run_status
+
+    checkpoint_db = st.session_state.get("checkpoint_db") or str(
+        project_dir / "state" / "checkpoints.sqlite"
+    )
+    conn = sqlite3.connect(checkpoint_db, check_same_thread=False)
+    try:
+        saver = SqliteSaver(conn)
+        graph = build_graph(checkpointer=saver)
+        config = {"configurable": {"thread_id": thread_id}}
+        result = graph.invoke(
+            Command(resume={"choice": choice, "rationale": rationale}),
+            config=config,
+        )
+        # Keep status.json in sync so the next Streamlit rerun sees the
+        # updated state (another gate, error, or complete).
+        result["run_id"] = run_id  # _write_run_status reads this
+        _write_run_status(result, thread_id=thread_id)
+        return result
+    finally:
+        conn.close()
+
+
+def _render_pending_gate(project_dir, run_id: str) -> dict | None:
+    """If a gate is waiting on human input, render the form. Return the gate dict
+    (truthy) while pending so the caller can suppress auto-refresh; None otherwise."""
+    status = load_run_status(project_dir, run_id)
+    pending = load_pending_gate(project_dir, run_id)
+    if not pending or not status or status.get("state") != "paused":
+        return None
+
+    st.divider()
+    st.subheader("⏸ Human decision required")
+    st.markdown(
+        f"**Stage:** `{pending.get('stage', '?')}` — **Gate:** `{pending.get('gate', '?')}`"
+    )
+    message = pending.get("message") or ""
+    if message:
+        st.caption(message)
+
+    options = pending.get("options") or []
+    thread_id = status.get("thread_id") or ""
+    form_key = f"gate_form_{run_id}_{pending.get('gate', '')}"
+
+    with st.form(form_key, clear_on_submit=False):
+        choice = st.radio(
+            "Select an option",
+            options=options,
+            index=0,
+            key=f"{form_key}_choice",
+        )
+        rationale = st.text_area(
+            "Rationale (optional — recorded to the audit log)",
+            key=f"{form_key}_rationale",
+            height=80,
+        )
+        submitted = st.form_submit_button("Submit decision", type="primary")
+
+    if submitted:
+        try:
+            _resume_graph(project_dir, run_id, thread_id, choice, rationale)
+        except Exception as e:
+            st.error(f"Resume failed: {e}")
+        else:
+            # Drop any lingering subprocess handle — the graph finished in-process.
+            st.session_state.pop("pipeline_process", None)
+            st.success(f"Resumed with choice: **{choice}**")
+            st.rerun()
+
+    return pending
+
+
 # ── Main page render ────────────────────────────────────────────────────────
 
 
@@ -275,15 +363,24 @@ def render(project_dir):
                 st.session_state.pop("show_tier_selection", None)
                 st.stop()
 
+            # One checkpoint DB per launch — thread_id is derived inside the
+            # graph so concurrent demo visitors don't collide. Persisting to
+            # SQLite (not MemorySaver) is what lets the resume-after-gate
+            # flow work across the subprocess → Streamlit-process boundary.
+            checkpoint_db = str(
+                project_dir / "state" / "checkpoints.sqlite"
+            )
             process = subprocess.Popen(
                 [
                     sys.executable,
                     "-m",
-                    "dashboard.pipeline_runner",
+                    "graph.pipeline",
                     "--project-dir",
                     str(project_dir),
                     "--tier",
                     selected,
+                    "--checkpoint-db",
+                    checkpoint_db,
                 ],
                 cwd=str(project_dir)
                 if (project_dir / "dashboard").is_dir()
@@ -292,6 +389,7 @@ def render(project_dir):
                 stderr=subprocess.STDOUT,
             )
             st.session_state["pipeline_process"] = process
+            st.session_state["checkpoint_db"] = checkpoint_db
             st.session_state.pop("show_tier_selection", None)
             st.session_state.pop("cost_estimate", None)
             st.session_state.pop("cost_tiers", None)
@@ -330,11 +428,17 @@ def render(project_dir):
                     except Exception:
                         pass
 
+    # ── Section B0: Pending human-in-the-loop decision ──────────────────
+    # When the LangGraph subprocess hits a `pause` gate, it drops
+    # pending_gate.json + status.json and exits. We render a form here;
+    # on submit, we resume the graph in-process via Command(resume=...).
+    run_id = get_latest_run_id(project_dir)
+    pending_gate = _render_pending_gate(project_dir, run_id) if run_id else None
+
     # ── Section B: Live Progress ─────────────────────────────────────────
     st.divider()
     st.subheader("Progress")
 
-    run_id = get_latest_run_id(project_dir)
     if run_id:
         pipeline_status = get_pipeline_status(project_dir)
         trace_entries = load_trace(project_dir, run_id)
@@ -351,8 +455,9 @@ def render(project_dir):
     else:
         st.caption("No runs found yet.")
 
-    # Auto-refresh while running
-    if is_running:
+    # Auto-refresh while running, but stop while a gate is pending —
+    # otherwise the form re-renders under the user as they're filling it in.
+    if is_running and not pending_gate:
         time.sleep(2)
         st.rerun()
 

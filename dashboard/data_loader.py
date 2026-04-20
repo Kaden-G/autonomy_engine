@@ -44,6 +44,36 @@ def get_state_dir(project_dir: Path) -> Path:
     return project_dir / "state"
 
 
+# -- Live run status (dashboard polling contract) -------------------------
+# The LangGraph pipeline drops two JSON files the dashboard polls between
+# reruns:
+#   status.json       — terminal state: complete / failed / paused
+#   pending_gate.json — shape of a pending human-in-the-loop decision
+# Both are small (<1KB) and safe to read on every Streamlit rerun.
+
+
+def load_run_status(project_dir: Path, run_id: str) -> dict | None:
+    """Return the current status.json payload, or None if not yet written."""
+    path = get_state_dir(project_dir) / "runs" / run_id / "status.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def load_pending_gate(project_dir: Path, run_id: str) -> dict | None:
+    """Return the pending gate payload, or None if no gate is waiting."""
+    path = get_state_dir(project_dir) / "runs" / run_id / "pending_gate.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 # -- Run Discovery -------------------------------------------------------
 
 

@@ -295,7 +295,48 @@ def run_pipeline(
 
     # Attach thread_id to result so callers can resume interrupted graphs
     result["_thread_id"] = tid
+
+    # Write a machine-readable status file for out-of-process pollers
+    # (primarily the dashboard). Cheaper than parsing stdout.
+    _write_run_status(result, thread_id=tid)
     return result
+
+
+def _write_run_status(result: dict, *, thread_id: str) -> None:
+    """Persist a status.json describing the run's terminal state.
+
+    One of: ``"complete"``, ``"failed"``, ``"paused"``.  Written to
+    ``state/runs/<run_id>/status.json``.  Pollers (the dashboard) read this
+    to decide whether to show a gate form, an error, or the success view.
+    """
+    import json
+    from engine.context import get_state_dir
+
+    run_id = result.get("run_id")
+    if not run_id:
+        return  # Nothing to attach the status to.
+
+    if result.get("__interrupt__"):
+        state = "paused"
+    elif result.get("error"):
+        state = "failed"
+    elif result.get("current_stage") == "complete":
+        state = "complete"
+    else:
+        state = "paused"  # Unknown terminal state — treat conservatively.
+
+    payload = {
+        "state": state,
+        "thread_id": thread_id,
+        "current_stage": result.get("current_stage"),
+        "error": result.get("error"),
+    }
+    try:
+        path = get_state_dir() / "runs" / run_id / "status.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload))
+    except OSError as e:
+        logger.warning("Could not write status.json: %s", e)
 
 
 # ── CLI entry point ─────────────────────────────────────────────────────────
@@ -319,7 +360,20 @@ if __name__ == "__main__":
         default=None,
         help="Path to SQLite checkpoint database (default: in-memory)",
     )
+    parser.add_argument(
+        "--tier",
+        default=None,
+        choices=["mvp", "premium"],
+        help="Build tier: mvp (cost-conscious) or premium (full output)",
+    )
     args = parser.parse_args()
+
+    # Tier must be set before the graph runs — tier_context is read during
+    # design/implement prompting.
+    if args.tier:
+        from engine.tier_context import set_tier
+
+        set_tier(args.tier)
 
     # Set up checkpointer based on args
     cp = None

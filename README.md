@@ -837,7 +837,8 @@ dashboard/            Web dashboard (Streamlit)
   app.py              Entry point, navigation, page routing
   theme.py            Centralized dark-mode styling
   data_loader.py      Reads pipeline data from disk (no engine imports)
-  pipeline_runner.py  Launches pipeline as a subprocess
+  rate_limiter.py     Session-scoped run limiter for the hosted demo
+  secrets_bridge.py   Copies API keys from st.secrets → os.environ at startup
   pages/              Page modules (home, create_project, run_pipeline, etc.)
   components/         Reusable UI components (pipeline visual, trace timeline, etc.)
 

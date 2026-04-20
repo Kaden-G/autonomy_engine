@@ -26,7 +26,7 @@ from graph.pipeline import (
     route_after_test,
     route_after_verify,
 )
-from graph.nodes import implement_node
+from graph.nodes import implement_node, _handle_decision_gate, _pending_gate_path
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -334,6 +334,140 @@ class TestRouteAfterVerify:
             },
         }
         assert route_after_verify(state) == "__end__"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Pending-gate file + status.json (dashboard polling contract)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestPendingGateFile:
+    """_handle_decision_gate must drop pending_gate.json before calling interrupt()
+    (so the dashboard can poll without reopening the checkpoint), and must remove
+    it after resume. Without this, the dashboard has no way to render a gate form
+    from a different process than the one that paused."""
+
+    def test_write_then_clear_on_resume(self, tmp_path, monkeypatch):
+        import json
+
+        import engine.context
+        from engine.decision_gates import DecisionRequired
+
+        engine.context.init(tmp_path)
+        (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+
+        state = {"run_id": "test-run-wc"}
+        exc = DecisionRequired(gate="g1", stage="design", options=["a", "b"])
+        pg_path = _pending_gate_path(state)
+
+        from graph import nodes as nodes_mod
+
+        class FakePolicy:
+            policy = "pause"
+            default_option = None
+
+        # interrupt() mock: side-effect — check the file exists before "resuming".
+        captured = {}
+
+        def fake_interrupt(payload):
+            captured["file_existed_at_interrupt"] = pg_path.exists()
+            captured["payload"] = payload
+            return {"choice": "a", "rationale": "why"}
+
+        monkeypatch.setattr(nodes_mod, "get_gate_policy", lambda stage: FakePolicy())
+        monkeypatch.setattr(nodes_mod, "interrupt", fake_interrupt)
+        monkeypatch.setattr(nodes_mod, "save_decision", lambda **kw: None)
+
+        _handle_decision_gate(exc, state)
+
+        # Before interrupt() fired, the pending-gate file was on disk.
+        assert captured["file_existed_at_interrupt"] is True
+        # Payload has the shape the dashboard expects.
+        assert captured["payload"]["gate"] == "g1"
+        assert captured["payload"]["options"] == ["a", "b"]
+        # After resume, the marker is cleaned up so stale gates don't confuse
+        # the polling loop.
+        assert not pg_path.exists()
+
+    def test_skip_policy_writes_no_file(self, tmp_path, monkeypatch):
+        import engine.context
+        from engine.decision_gates import DecisionRequired
+
+        engine.context.init(tmp_path)
+        (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+
+        state = {"run_id": "test-run-skip"}
+        exc = DecisionRequired(gate="g", stage="test", options=["x", "y"])
+
+        from graph import nodes as nodes_mod
+
+        class FakePolicy:
+            policy = "skip"
+            default_option = None
+
+        monkeypatch.setattr(nodes_mod, "get_gate_policy", lambda stage: FakePolicy())
+        result = _handle_decision_gate(exc, state)
+
+        assert result is None
+        assert not _pending_gate_path(state).exists()
+
+
+class TestRunStatusFile:
+    """run_pipeline() must leave a status.json the dashboard can poll to detect
+    paused vs complete vs failed without parsing subprocess stdout."""
+
+    def test_status_reflects_interrupt(self, tmp_path, monkeypatch):
+        import json
+
+        import engine.context
+        from graph.pipeline import _write_run_status
+
+        engine.context.init(tmp_path)
+        (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+
+        result = {
+            "run_id": "st-1",
+            "__interrupt__": [{"value": {"gate": "g", "stage": "design", "options": ["a", "b"]}}],
+            "current_stage": "design",
+        }
+        _write_run_status(result, thread_id="tid-1")
+
+        status_path = tmp_path / "state" / "runs" / "st-1" / "status.json"
+        status = json.loads(status_path.read_text())
+        assert status["state"] == "paused"
+        assert status["thread_id"] == "tid-1"
+        assert status["current_stage"] == "design"
+
+    def test_status_reflects_complete(self, tmp_path):
+        import json
+
+        import engine.context
+        from graph.pipeline import _write_run_status
+
+        engine.context.init(tmp_path)
+        (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+
+        result = {"run_id": "st-2", "current_stage": "complete"}
+        _write_run_status(result, thread_id="tid-2")
+
+        status_path = tmp_path / "state" / "runs" / "st-2" / "status.json"
+        assert json.loads(status_path.read_text())["state"] == "complete"
+
+    def test_status_reflects_failed(self, tmp_path):
+        import json
+
+        import engine.context
+        from graph.pipeline import _write_run_status
+
+        engine.context.init(tmp_path)
+        (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+
+        result = {"run_id": "st-3", "error": "design failed: bad contract"}
+        _write_run_status(result, thread_id="tid-3")
+
+        status = json.loads((tmp_path / "state" / "runs" / "st-3" / "status.json").read_text())
+        assert status["state"] == "failed"
+        assert "design failed" in status["error"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

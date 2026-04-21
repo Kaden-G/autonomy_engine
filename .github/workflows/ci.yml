@@ -177,13 +177,18 @@ jobs:
 
       - name: Verify recorded run traces (if any in checkout)
         run: |
-          if [ -d state/runs ] && [ -n "$(ls -A state/runs 2>/dev/null)" ]; then
-            for d in state/runs/*/; do
+          # Use `find` instead of `state/runs/*/` glob — the glob stays
+          # literal when no subdir matches, and the `state/runs/` directory
+          # itself is kept in-tree via .gitkeep sentinels.
+          found_runs=$(find state/runs -mindepth 1 -maxdepth 1 -type d 2>/dev/null || true)
+          if [ -z "$found_runs" ]; then
+            echo "No recorded runs in this checkout — skipping."
+          else
+            echo "$found_runs" | while IFS= read -r d; do
               run_id=$(basename "$d")
+              echo "Verifying run: $run_id"
               python -m engine.verify_trace --run-id "$run_id" --json
             done
-          else
-            echo "No recorded runs in this checkout — skipping."
           fi
 
       - name: Archive trace on failure

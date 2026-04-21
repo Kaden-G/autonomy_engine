@@ -1,8 +1,18 @@
-"""Main Prefect flow — THE entry point. Catches DecisionRequired exceptions.
+# DEPRECATED: Prefect orchestration path.
+# Retires 2026-05-21 (30 days from 2026-04-21). After that date, delete this file.
+# New work uses graph/pipeline.py (LangGraph StateGraph).
+# See docs/prefect-sunset-audit.md for the full retirement plan.
+"""Main Prefect flow — legacy entry point (LangGraph is the v2.0 default).
+
+Runs end-to-end only when Prefect is installed (`pip install -e ".[prefect]"`).
+Without Prefect, `engine.compat` provides no-op `@flow` / `@task` decorators
+so the module still imports — but `pause_flow_run` (called via
+`engine.decision_gates.require_decision`) raises `NotImplementedError`.
 
 Supports environment-specific config files and graceful shutdown via
-SIGTERM/SIGINT.  See ``_setup_signal_handlers`` and ``_load_config``
-for details.
+SIGTERM/SIGINT. See `_setup_signal_handlers` and `_load_config` for details.
+The graceful-shutdown logic was ported to `graph/nodes.py` during the v2.0
+migration; this module is kept only until the 2026-05-21 sunset.
 """
 
 import argparse

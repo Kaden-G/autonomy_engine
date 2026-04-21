@@ -14,6 +14,12 @@
 #   - Security scans don't need multiple Python versions.
 #   - Test matrix covers compatibility; the others are version-independent.
 #   - Import check catches missing deps that unit tests might not exercise.
+#
+# Deprecated-test policy:
+#   tests/test_production_readiness.py is gated behind RUN_DEPRECATED_TESTS=1
+#   (retires 2026-05-21 with the Prefect flow). CI does not set that var, so
+#   the legacy Prefect flow tests are skipped by default. To run them locally
+#   during the sunset window: RUN_DEPRECATED_TESTS=1 pytest tests/…
 # --------------------------------------------------------------------------
 
 name: CI
@@ -108,7 +114,7 @@ jobs:
           import engine.tier_context
           import engine.cost_estimator
           import engine.cache
-          import flows.autonomous_flow
+          import flows.autonomous_flow  # LEGACY-GATED — retires 2026-05-21; see docs/prefect-sunset-audit.md
           import intake.schema
           import intake.renderer
           import tasks.bootstrap

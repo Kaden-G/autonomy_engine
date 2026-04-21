@@ -13,7 +13,7 @@ to test graph behavior in isolation.
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from graph.state import Decision, PipelineState, StageResult, StageStatus
 from graph.pipeline import (
@@ -348,7 +348,6 @@ class TestPendingGateFile:
     from a different process than the one that paused."""
 
     def test_write_then_clear_on_resume(self, tmp_path, monkeypatch):
-        import json
 
         import engine.context
         from engine.decision_gates import DecisionRequired

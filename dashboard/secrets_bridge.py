@@ -57,15 +57,18 @@ def inject_secrets() -> list[str]:
         if os.environ.get(key):
             continue
 
-        # st.secrets raises KeyError if the key doesn't exist; .get()
-        # returns None on missing keys depending on Streamlit version.
-        value = st.secrets.get(key) if hasattr(st.secrets, "get") else None
-        if value is None:
-            try:
+        # st.secrets access can raise several errors when no secrets file
+        # is present (e.g. local dev or CI without .streamlit/secrets.toml):
+        #   - KeyError: key absent
+        #   - FileNotFoundError: secrets.toml missing on disk
+        #   - StreamlitSecretNotFoundError: Streamlit's typed wrapper
+        # We treat all of them as "no secret available — fall back to environ".
+        try:
+            value = st.secrets.get(key) if hasattr(st.secrets, "get") else None
+            if value is None:
                 value = st.secrets[key]
-            except (KeyError, FileNotFoundError):
-                # FileNotFoundError: no secrets.toml and not on Cloud.
-                value = None
+        except Exception:
+            value = None
 
         if value:
             os.environ[key] = str(value)

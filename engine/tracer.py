@@ -49,7 +49,9 @@ from engine.context import get_config_path, get_state_dir
 # ── Constants ────────────────────────────────────────────────────────────────
 
 GENESIS_HASH = "0" * 64  # Starting value for the chain (first entry has no predecessor)
-_KEY_FILENAME = ".trace_key"  # Hidden file storing the cryptographic signing key for this run
+_KEY_FILENAME = ".trace_key"  # Legacy per-run key filename (pre-baseline-P0-3 location)
+_NEW_KEY_SUFFIX = ".key"  # New per-run key filename suffix at ~/.autonomy_engine/keys/
+_BREADCRUMB_FILENAME = ".trace_key_moved"  # Left in old dir when the migration shim runs
 
 # ── Thread-local per-run state ───────────────────────────────────────────────
 # Each thread gets its own run_id / prev_hash / seq / hmac_key, so concurrent
@@ -142,12 +144,12 @@ def init_run() -> str:
     # Generate a unique signing key for this run's audit log (256-bit, cryptographically random)
     hmac_key = secrets.token_bytes(32)
     _set("hmac_key", hmac_key)
-    key_path = run_dir / _KEY_FILENAME
-    key_path.write_bytes(hmac_key)
-    try:
-        os.chmod(key_path, 0o600)  # owner-read-write only
-    except OSError:
-        pass  # Windows or restrictive filesystem — best effort
+    # Store the key at the resolved location (default: ~/.autonomy_engine/
+    # keys/<run_id>.key; override via AE_TRACE_KEY_DIR). Separating the key
+    # from state/runs/ is the P0-3 baseline fix — without it, an attacker
+    # with write access to the trace dir has both the log and the signing
+    # key. See engine.tracer._resolve_key_dir for details.
+    _write_hmac_key(run_id, hmac_key)
 
     # Snapshot runtime config for reproducibility
     config_path = get_config_path()
@@ -173,11 +175,192 @@ def _trace_path() -> Path:
     return get_state_dir() / "runs" / get_run_id() / "trace.jsonl"
 
 
+# ── HMAC key location (P0-3 baseline — key separated from trace data) ───────
+#
+# Historically the per-run HMAC key lived next to `trace.jsonl` in
+# `state/runs/<run_id>/.trace_key`. That's the exact attack the HMAC
+# design was supposed to stop: an attacker with write access to
+# `state/runs/` got both the log and the key, so they could forge valid
+# entries. The baseline fix relocates the key to `~/.autonomy_engine/
+# keys/<run_id>.key` (owner-only: dir 0700, file 0600).
+#
+# Maps to: NIST SP 800-57 (Key Management — separation of keys from the
+#          data they protect), OWASP ASVS V6.2.1 (key separation).
+#
+# Override with `AE_TRACE_KEY_DIR`:
+#   - Absolute path            → use as-is (dir created with 0700)
+#   - `keyring:<service_name>` → store keys in the OS keyring (requires
+#                                the optional `keyring` library;
+#                                parsing is always supported so CI can
+#                                round-trip the env var)
+#
+# See docs/audit-trail.md for the full threat model + POAM.
+
+
+def _resolve_key_dir() -> Path | tuple[str, str]:
+    """Resolve the HMAC-key storage location.
+
+    Returns a Path for filesystem-backed storage, or
+    ``("keyring", service_name)`` for OS-keyring-backed storage.
+
+    Priority:
+        1. ``AE_TRACE_KEY_DIR`` env var (absolute path or
+           ``keyring:<service>``).
+        2. Default: ``~/.autonomy_engine/keys``.
+    """
+    env = os.environ.get("AE_TRACE_KEY_DIR", "").strip()
+    if env:
+        if env.startswith("keyring:"):
+            service = env[len("keyring:") :].strip()
+            if not service:
+                raise ValueError(
+                    "AE_TRACE_KEY_DIR=keyring: requires a service name, e.g. "
+                    "`keyring:autonomy-engine`"
+                )
+            return ("keyring", service)
+        return Path(env).expanduser().resolve()
+    return Path.home() / ".autonomy_engine" / "keys"
+
+
+def _write_hmac_key(run_id: str, key: bytes) -> Path | None:
+    """Write *key* to the resolved key dir with 0600 perms (dir 0700).
+
+    Returns the file path, or None if the key was written to the OS keyring.
+
+    Uses ``os.open(O_WRONLY|O_CREAT|O_EXCL, 0o600)`` so the mode is set at
+    creation time and is not loosened by the umask. After the write, perms
+    are re-verified; a loose mode logs a WARNING (defense in depth — some
+    filesystems or samba mounts silently relax mode bits).
+    """
+    loc = _resolve_key_dir()
+    if isinstance(loc, tuple):
+        _backend, service = loc
+        try:
+            import keyring  # type: ignore[import-not-found]
+        except ImportError as exc:
+            raise RuntimeError(
+                f"AE_TRACE_KEY_DIR=keyring:{service} set, but the `keyring` "
+                "library is not installed. Install with `pip install keyring`."
+            ) from exc
+        import base64 as _b64
+
+        keyring.set_password(service, run_id, _b64.b64encode(key).decode("ascii"))
+        return None
+
+    loc.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(loc, 0o700)
+    except OSError:
+        pass  # Windows / restrictive FS — best effort.
+
+    key_path = loc / f"{run_id}{_NEW_KEY_SUFFIX}"
+    # O_EXCL: refuse to overwrite an existing key for the same run_id.
+    fd = os.open(str(key_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        os.write(fd, key)
+    finally:
+        os.close(fd)
+
+    # Defense in depth: verify perms after write.
+    try:
+        mode = os.stat(key_path).st_mode & 0o777
+        if mode & 0o077:
+            import logging as _logging
+
+            _logging.getLogger(__name__).warning(
+                "HMAC key %s has loose perms (mode=%o); umask or filesystem "
+                "may have relaxed the requested 0600.",
+                key_path,
+                mode,
+            )
+    except OSError:
+        pass
+
+    return key_path
+
+
+def _migrate_legacy_key(run_id: str, new_path: Path) -> bytes | None:
+    """Move an old-location `.trace_key` (next to trace.jsonl) to *new_path*.
+
+    Called from _load_hmac_key when the new-location key is absent but the
+    legacy per-run `.trace_key` is still present — i.e. a run that was
+    created before the P0-3 relocation landed. Writes a breadcrumb to the
+    old dir so an operator opening the run directory sees where the key
+    went.
+
+    Returns the migrated key bytes, or None if no legacy key exists.
+    """
+    try:
+        legacy = get_state_dir() / "runs" / run_id / _KEY_FILENAME
+    except Exception:
+        return None
+
+    if not legacy.exists():
+        return None
+
+    key = legacy.read_bytes()
+    new_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(new_path.parent, 0o700)
+    except OSError:
+        pass
+    fd = os.open(str(new_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        os.write(fd, key)
+    finally:
+        os.close(fd)
+
+    breadcrumb = legacy.parent / _BREADCRUMB_FILENAME
+    breadcrumb.write_text(
+        f"Key relocated to {new_path} on "
+        f"{datetime.now(timezone.utc).isoformat()}. "
+        "See docs/audit-trail.md.\n"
+    )
+    try:
+        legacy.unlink()
+    except OSError:
+        pass
+
+    import logging as _logging
+
+    _logging.getLogger(__name__).info(
+        "Migrated HMAC key for run %s from %s to %s", run_id, legacy, new_path
+    )
+    return key
+
+
 def _load_hmac_key(run_id: str) -> bytes | None:
-    """Load the HMAC key for a run, or None if missing."""
-    key_path = get_state_dir() / "runs" / run_id / _KEY_FILENAME
-    if key_path.exists():
-        return key_path.read_bytes()
+    """Load the HMAC key for a run, or None if missing.
+
+    Resolution order:
+        1. Keyring backend (if AE_TRACE_KEY_DIR=keyring:<service>).
+        2. New location (`<resolved_dir>/<run_id>.key`).
+        3. Legacy `.trace_key` next to trace.jsonl — if found, migrate
+           to the new location, leave a breadcrumb, return the key.
+    """
+    loc = _resolve_key_dir()
+    if isinstance(loc, tuple):
+        _backend, service = loc
+        try:
+            import keyring  # type: ignore[import-not-found]
+        except ImportError:
+            return None
+        import base64 as _b64
+
+        encoded = keyring.get_password(service, run_id)
+        if encoded is None:
+            return None
+        return _b64.b64decode(encoded.encode("ascii"))
+
+    new_path = loc / f"{run_id}{_NEW_KEY_SUFFIX}"
+    if new_path.exists():
+        return new_path.read_bytes()
+
+    # Migration: legacy key in the run's state dir.
+    migrated = _migrate_legacy_key(run_id, new_path)
+    if migrated is not None:
+        return migrated
+
     return None
 
 
@@ -296,18 +479,21 @@ def verify_trace_integrity(
     if not path.exists():
         return False, [f"trace.jsonl not found for run {rid}"]
 
-    # Load the signing key for this run's audit log. When an explicit
-    # state_dir was provided, resolve the key path under it too — otherwise
-    # fall back to the context-aware _load_hmac_key helper.
-    if state_dir is not None:
-        key_path = base / "runs" / rid / _KEY_FILENAME
-        key = key_path.read_bytes() if key_path.exists() else None
-    else:
-        key = _load_hmac_key(rid)
+    # Resolve the signing key via the standard AE_TRACE_KEY_DIR-aware
+    # resolver. Since P0-3, keys live outside state/runs/ (default:
+    # ~/.autonomy_engine/keys/<run_id>.key). --state-dir overrides the
+    # trace.jsonl location but NOT the key location — set
+    # AE_TRACE_KEY_DIR if the key is in a non-standard place for the
+    # verification environment. If a legacy run's key is still next to
+    # trace.jsonl, _load_hmac_key's migration shim moves it on first
+    # read.
+    key = _load_hmac_key(rid)
     if key is None:
         return False, [
-            f"HMAC key (.trace_key) not found for run {rid}. "
-            "Cannot verify integrity — trace may predate HMAC support."
+            f"HMAC key not found for run {rid}. "
+            "Cannot verify integrity — check AE_TRACE_KEY_DIR or that "
+            "~/.autonomy_engine/keys/ is reachable. Trace may also "
+            "predate HMAC support."
         ]
 
     text = path.read_text().strip()

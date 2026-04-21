@@ -35,10 +35,12 @@ except ImportError:
         if fn is not None:
             fn.fn = fn  # Self-reference: .fn unwraps to the same function
             return fn
+
         # Called with arguments: @task(name="foo") → returns decorator
         def wrapper(f):
             f.fn = f
             return f
+
         return wrapper
 
     def flow(fn=None, *, name=None, **kwargs):
@@ -46,9 +48,11 @@ except ImportError:
         if fn is not None:
             fn.fn = fn
             return fn
+
         def wrapper(f):
             f.fn = f
             return f
+
         return wrapper
 
     def pause_flow_run(**kwargs):
@@ -64,5 +68,6 @@ except ImportError:
 
     class RunInput:
         """Stub for Prefect's RunInput when Prefect is not installed."""
+
         choice: str = ""
         rationale: str = ""

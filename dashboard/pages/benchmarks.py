@@ -330,7 +330,7 @@ def render(project_dir):
         if all_stages:
             st.markdown(
                 '<p style="font-size:13px; font-weight:600; margin:12px 0 4px;">'
-                'Per-Stage Wall Time (mean seconds)</p>',
+                "Per-Stage Wall Time (mean seconds)</p>",
                 unsafe_allow_html=True,
             )
             rows = []
@@ -357,7 +357,7 @@ def render(project_dir):
         if llm_stages:
             st.markdown(
                 '<p style="font-size:13px; font-weight:600; margin:12px 0 4px;">'
-                'LLM Calls by Stage</p>',
+                "LLM Calls by Stage</p>",
                 unsafe_allow_html=True,
             )
             rows = []

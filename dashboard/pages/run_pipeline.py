@@ -366,9 +366,7 @@ def render(project_dir):
             # graph so concurrent demo visitors don't collide. Persisting to
             # SQLite (not MemorySaver) is what lets the resume-after-gate
             # flow work across the subprocess → Streamlit-process boundary.
-            checkpoint_db = str(
-                project_dir / "state" / "checkpoints.sqlite"
-            )
+            checkpoint_db = str(project_dir / "state" / "checkpoints.sqlite")
             process = subprocess.Popen(
                 [
                     sys.executable,

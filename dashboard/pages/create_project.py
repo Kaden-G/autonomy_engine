@@ -132,8 +132,7 @@ def _parse_uploaded_yaml(uploaded_file) -> dict:
     except ValidationError as e:
         # Collapse pydantic errors into a short bullet list for the UI.
         bullets = "\n".join(
-            f"• {'/'.join(str(p) for p in err['loc'])}: {err['msg']}"
-            for err in e.errors()
+            f"• {'/'.join(str(p) for p in err['loc'])}: {err['msg']}" for err in e.errors()
         )
         return {"ok": False, "error": f"Validation failed:\n{bullets}"}
 
@@ -269,7 +268,9 @@ def render(project_dir):
                 ):
                     if parsed["ok"]:
                         _load_spec_into_form(parsed["spec"].model_dump())
-                        st.success(f"Imported '{parsed['spec'].project.name}'. Review and submit below.")
+                        st.success(
+                            f"Imported '{parsed['spec'].project.name}'. Review and submit below."
+                        )
                         st.rerun()
                     else:
                         st.error(parsed["error"])

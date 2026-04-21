@@ -308,6 +308,22 @@ Extracted Python files are validated for correct syntax, resolvable imports, and
 
 API keys are loaded from a `.env` file (which is excluded from version control) and never appear in audit logs, prompts, or output. A pre-commit hook rejects any attempt to commit files containing key patterns.
 
+### Sharing the project safely
+
+When sharing this project as a zip (e.g., for code review), use:
+
+```bash
+make share-zip
+```
+
+This target produces `autonomy_engine_<date>_<time>.zip` with a curated exclusion list — `.env` files, `state/` run logs, key material (`*.key`, `*.pem`, `.trace_key`), virtual envs, caches, and OS metadata are all left out. The exclusions live in [`.zipignore`](.zipignore) as the single source of truth.
+
+Before zipping, the target runs a secret-scan over both the staged file set and high-risk-named files in the working tree (`.env`, `.env.*`, `*.key`, `*.pem`, `.trace_key`). If any file matches a credential pattern (`sk-ant-`, `sk-proj-`, `AKIA…`, `ghp_…`, `xoxb-…`, `-----BEGIN`), **the target refuses to build the zip** and names the offending file. Files ending in `.example`, `.template`, or `.sample` are skipped (they contain illustrative placeholders by design).
+
+After a successful build, the target prints the file size, file count, and full contents listing so you can review before sharing.
+
+> **Limitation:** This protects the `make share-zip` flow only. A developer can still produce a zip via the file manager or `zip -r` directly. A pre-commit hook (`.githooks/pre-commit`) provides the analogous protection on the commit flow.
+
 ---
 
 ## Quality Assurance

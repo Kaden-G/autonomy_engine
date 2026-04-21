@@ -28,6 +28,7 @@ build/
 
 # Environment — never track actual env files
 .env
+.env.*
 .env.local
 .env.*.local
 .venv/
@@ -49,6 +50,9 @@ CLAUDE_CODE_*.md
 # Exported docs (root only)
 /*.docx
 /*.html
+
+# Shareable zip artifacts (built by `make share-zip`)
+*.zip
 
 # Coverage
 htmlcov/

@@ -1,20 +1,38 @@
 """Compatibility layer for optional Prefect dependency.
 
-With the LangGraph migration, Prefect is no longer a required dependency.
-However, the existing task modules use @task decorators and decision_gates.py
-uses pause_flow_run. This module provides no-op fallbacks when Prefect is
-not installed, so the task functions work as plain Python functions under
-LangGraph orchestration.
+SUNSET: 2026-05-21.
+    `flows/autonomous_flow.py` and the Prefect-only symbols exported here
+    (`flow`, `pause_flow_run`, `RunInput`) retire on 2026-05-21. After that
+    date this module can either be deleted entirely (if `tasks/*.py` drops
+    the `@task` decorator) or trimmed down to just the `task` passthrough.
+    See `docs/prefect-sunset-audit.md` for the full retirement plan.
+
+Why no module-level `DeprecationWarning`:
+    `@task` is STILL-ACTIVE — every file in `tasks/` imports it and calls
+    it on module load. A `warnings.warn(DeprecationWarning, ...)` here
+    would fire on every pipeline run, not just when someone reaches for
+    the legacy Prefect path. The sunset is instead signaled by: (1) the
+    loud banner on `flows/autonomous_flow.py`; (2) the
+    `NotImplementedError` raised by `pause_flow_run` when Prefect is
+    absent; (3) the README's "Retired features" section.
+
+Background:
+    With the LangGraph migration (v2.0), Prefect is no longer a required
+    dependency. However, the existing task modules use @task decorators
+    and `decision_gates.py::require_decision` uses `pause_flow_run`. This
+    module provides no-op fallbacks when Prefect is not installed, so the
+    task functions work as plain Python functions under LangGraph
+    orchestration.
 
 Design decision:
-    Rather than removing all Prefect references from tasks/*.py (which would
-    break the Prefect flow entry point), we make the decorators conditional.
-    This lets both orchestrators coexist during migration:
-    - LangGraph: tasks are plain functions (no-op decorator)
-    - Prefect: tasks get the real @task decorator (retry, caching, etc.)
+    Rather than removing all Prefect references from `tasks/*.py` (which
+    would break the legacy flow entry point during the sunset window), we
+    make the decorators conditional. This lets both orchestrators coexist:
+    - LangGraph: tasks are plain functions (no-op decorator).
+    - Prefect: tasks get the real @task decorator (retry, caching, etc.).
 
-    After migration is complete and Prefect is fully retired, this module
-    and the flows/ directory can be removed in a cleanup PR.
+    After 2026-05-21, the `flows/` directory and the Prefect-only symbols
+    here (`flow`, `pause_flow_run`, `RunInput`) get deleted in a cleanup PR.
 """
 
 try:

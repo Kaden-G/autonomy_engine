@@ -1,11 +1,22 @@
 """Tests for production-readiness features: signal handling, env config, structured logging.
 
-These tests verify the operational hardening added to make the engine
-safe for unattended/containerized deployments.
+Most tests here verify operational hardening for the LEGACY Prefect flow
+(`flows/autonomous_flow.py`). Under LangGraph (v2.0 default), that hardening
+has been ported to `graph/nodes.py` and is exercised by
+`tests/test_graph_pipeline.py`.
+
+DEPRECATED (Prefect-specific test classes only): Retires 2026-05-21.
+After that date, delete `TestGracefulShutdown` and `TestConfigLoading`.
+`TestStructuredLogging` stays — it tests `engine.log_config`, which is
+orchestrator-agnostic and STILL-ACTIVE. See `docs/prefect-sunset-audit.md`.
+
+To run the Prefect-flow-specific classes during the sunset window:
+    RUN_DEPRECATED_TESTS=1 pytest tests/test_production_readiness.py
 """
 
 import json
 import logging
+import os
 import signal
 
 import pytest
@@ -13,10 +24,20 @@ import yaml
 
 import engine.context
 
+# Module-level skip removed intentionally — `TestStructuredLogging` below tests
+# `engine.log_config` (STILL-ACTIVE) and must run in CI.  Only the Prefect-
+# specific classes are gated behind RUN_DEPRECATED_TESTS.
+_SKIP_PREFECT_TESTS = pytest.mark.skipif(
+    os.getenv("RUN_DEPRECATED_TESTS") != "1",
+    reason="Prefect flow tests retire with flows/ on 2026-05-21. "
+    "Set RUN_DEPRECATED_TESTS=1 to run during the sunset window.",
+)
+
 
 # ── Graceful shutdown ────────────────────────────────────────────────────────
 
 
+@_SKIP_PREFECT_TESTS
 class TestGracefulShutdown:
     """Verify signal handlers are installed and behave correctly."""
 
@@ -70,6 +91,7 @@ class TestGracefulShutdown:
 # ── Environment-aware config loading ─────────────────────────────────────────
 
 
+@_SKIP_PREFECT_TESTS
 class TestConfigLoading:
     """Verify environment-specific config resolution."""
 

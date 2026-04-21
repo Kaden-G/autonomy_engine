@@ -217,7 +217,8 @@ python graph/pipeline.py --checkpoint-db state/checkpoints.sqlite
 # Resume an interrupted run
 python graph/pipeline.py --thread-id <thread-id> --checkpoint-db state/checkpoints.sqlite
 
-# Legacy entry point still works (requires: pip install autonomy-engine[prefect])
+# Legacy entry point (retires 2026-05-21 — see Retired features below)
+# Requires: pip install autonomy-engine[prefect]
 python flows/autonomous_flow.py
 ```
 
@@ -553,7 +554,7 @@ python graph/pipeline.py --checkpoint-db state/checkpoints.sqlite
 The engine will refuse to start if intake has not been completed. Gate approvals surface inline via LangGraph's `interrupt()` (no external UI required) — or use the **Run Pipeline** page in the dashboard for tier selection, cost estimates, and live monitoring.
 
 <details>
-<summary><b>Legacy (v1.x — Prefect)</b>: still works if you install with <code>pip install "autonomy-engine[prefect]"</code>.</summary>
+<summary><b>Legacy (v1.x — Prefect)</b>: still works if you install with <code>pip install "autonomy-engine[prefect]"</code>. <b>Retires 2026-05-21.</b></summary>
 
 ```bash
 # Start Prefect server (separate terminal)
@@ -566,7 +567,7 @@ python flows/autonomous_flow.py
 python flows/autonomous_flow.py --project-dir ~/projects/solo1
 ```
 
-The Prefect UI is available at `http://localhost:4200` for monitoring and gate approvals. New projects should prefer `graph/pipeline.py` — the Prefect entry point is kept for backward compatibility.
+The Prefect UI is available at `http://localhost:4200` for monitoring and gate approvals. New projects should use `graph/pipeline.py`. The Prefect entry point is kept until 2026-05-21 for backward compatibility — see [Retired features](#retired-features) and [docs/prefect-sunset-audit.md](docs/prefect-sunset-audit.md) for the full retirement plan.
 
 </details>
 
@@ -743,11 +744,11 @@ The engine supports per-environment config files for dev/staging/production depl
 
 ```bash
 # Use an environment-specific config
-AE_ENV=production python flows/autonomous_flow.py
+AE_ENV=production python graph/pipeline.py
 # → loads config.production.yml
 
 # Or specify an explicit config path
-AE_CONFIG_PATH=my-config.yml python flows/autonomous_flow.py
+AE_CONFIG_PATH=my-config.yml python graph/pipeline.py
 ```
 
 Resolution order: `AE_CONFIG_PATH` (explicit path) → `AE_ENV` (loads `config.<env>.yml`) → `config.yml` (default). This is backward compatible — unset both variables and the engine behaves exactly as before.
@@ -762,10 +763,10 @@ Two output modes controlled by `AE_LOG_FORMAT`:
 
 ```bash
 # Human-readable (default)
-AE_LOG_FORMAT=text python flows/autonomous_flow.py
+AE_LOG_FORMAT=text python graph/pipeline.py
 
 # JSON-lines for log aggregation (Datadog, CloudWatch, ELK)
-AE_LOG_FORMAT=json AE_LOG_LEVEL=DEBUG python flows/autonomous_flow.py
+AE_LOG_FORMAT=json AE_LOG_LEVEL=DEBUG python graph/pipeline.py
 ```
 
 JSON mode emits one self-contained JSON object per line with `timestamp`, `level`, `logger`, `message`, and any structured `extra` fields. Log level is controlled by `AE_LOG_LEVEL` (default: `INFO`).
@@ -817,7 +818,7 @@ graph/                LangGraph orchestration (v2.0 — primary entry point)
   nodes.py            Thin adapters over tasks/*.py (one node per stage)
   state.py            PipelineState TypedDict — the shape of run state
 
-flows/                Prefect flow definition (legacy v1.x — still supported)
+flows/                Prefect flow definition (legacy v1.x — retires 2026-05-21)
 tasks/                Individual pipeline stages (one file per stage)
   bootstrap.py        Input validation and audit log initialization
   design.py           Architecture and design contract generation (AI-powered)
@@ -866,3 +867,15 @@ tests/                Automated test suite (569 tests, 61% engine coverage)
 bench/                Performance benchmarking tools
 specs/                Reference spec files for manual testing (not consumed by the pipeline)
 ```
+
+---
+
+## Retired features
+
+**v1.x Prefect flows retire 2026-05-21.** Use `graph/pipeline.py` (LangGraph) going forward.
+
+The `flows/autonomous_flow.py` entry point, the `@flow` decorator in `engine/compat.py`, and the `pause_flow_run` / `RunInput` / `require_decision` path in `engine/decision_gates.py` all sunset on 2026-05-21 (30 days from 2026-04-21). Until then, they remain callable if Prefect is installed (`pip install "autonomy-engine[prefect]"`), with banners on each deprecated symbol.
+
+Tests that exercise only the Prefect flow (`tests/test_production_readiness.py`) are gated behind `RUN_DEPRECATED_TESTS=1` and skipped by default in CI.
+
+Full retirement plan: [docs/prefect-sunset-audit.md](docs/prefect-sunset-audit.md).

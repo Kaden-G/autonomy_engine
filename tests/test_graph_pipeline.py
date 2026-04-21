@@ -291,27 +291,21 @@ class TestImplementNodeRetryBudget:
         # Iteration 1 (first implement) — no prior implement, no increment.
         with patch("graph.nodes.implement_system"):
             state.update(implement_node(state))
-        state["stage_results"]["test"] = StageResult(
-            status=StageStatus.FAILED, error="fail"
-        )
+        state["stage_results"]["test"] = StageResult(status=StageStatus.FAILED, error="fail")
         assert route_after_test(state) == "implement"
 
         # Iteration 2 (retry 1) — prior implement present, retry_count → 1.
         with patch("graph.nodes.implement_system"):
             state.update(implement_node(state))
         assert state["retry_count"] == 1
-        state["stage_results"]["test"] = StageResult(
-            status=StageStatus.FAILED, error="fail"
-        )
+        state["stage_results"]["test"] = StageResult(status=StageStatus.FAILED, error="fail")
         assert route_after_test(state) == "implement"
 
         # Iteration 3 (retry 2) — retry_count → 2, budget hit on next test-fail.
         with patch("graph.nodes.implement_system"):
             state.update(implement_node(state))
         assert state["retry_count"] == 2
-        state["stage_results"]["test"] = StageResult(
-            status=StageStatus.FAILED, error="fail"
-        )
+        state["stage_results"]["test"] = StageResult(status=StageStatus.FAILED, error="fail")
         assert route_after_test(state) == "__end__"
 
 
@@ -487,7 +481,16 @@ class TestGraphStructure:
         graph = build_graph()
         # The compiled graph's nodes are accessible via .nodes
         node_names = set(graph.nodes.keys())
-        expected = {"init", "bootstrap", "design", "implement", "extract", "test", "verify", "complete"}
+        expected = {
+            "init",
+            "bootstrap",
+            "design",
+            "implement",
+            "extract",
+            "test",
+            "verify",
+            "complete",
+        }
         # LangGraph adds __start__ and __end__ nodes
         assert expected.issubset(node_names), f"Missing nodes: {expected - node_names}"
 

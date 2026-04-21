@@ -141,7 +141,9 @@ def route_after_test(
         )
         return "implement"
 
-    logger.warning("Test failures detected but retry budget exhausted (%d/%d).", retry_count, max_retries)
+    logger.warning(
+        "Test failures detected but retry budget exhausted (%d/%d).", retry_count, max_retries
+    )
     return END
 
 
@@ -342,9 +344,7 @@ def _write_run_status(result: dict, *, thread_id: str) -> None:
 # ── CLI entry point ─────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Run the Autonomous Build Pipeline (LangGraph)"
-    )
+    parser = argparse.ArgumentParser(description="Run the Autonomous Build Pipeline (LangGraph)")
     parser.add_argument(
         "--project-dir",
         default=None,

@@ -255,8 +255,7 @@ def _extract_json(raw: str) -> str:
         repaired = _repair_json(raw)
         if repaired is not None:
             logger.warning(
-                "Manifest JSON had syntax errors — auto-repaired. "
-                "Original error: %s",
+                "Manifest JSON had syntax errors — auto-repaired. Original error: %s",
                 exc,
             )
             return repaired

@@ -280,9 +280,7 @@ def _load_config(project_root: Path) -> dict:
         if env_name:
             config_path = project_root / f"config.{env_name}.yml"
             if not config_path.exists():
-                raise FileNotFoundError(
-                    f"AE_ENV={env_name} but config.{env_name}.yml not found"
-                )
+                raise FileNotFoundError(f"AE_ENV={env_name} but config.{env_name}.yml not found")
         else:
             config_path = project_root / "config.yml"
             if not config_path.exists():
@@ -334,9 +332,7 @@ def init_node(state: PipelineState) -> dict[str, Any]:
     missing = [f for f in REQUIRED_INPUTS if not (state_dir / f).exists()]
     if missing:
         return {
-            "error": (
-                "Intake not completed. Missing: " + ", ".join(missing)
-            ),
+            "error": ("Intake not completed. Missing: " + ", ".join(missing)),
             "current_stage": "init",
             "stage_results": {
                 "init": StageResult(

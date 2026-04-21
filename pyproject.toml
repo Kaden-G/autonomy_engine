@@ -52,6 +52,8 @@ target-version = "py310"
 "intake/intake.py" = ["E402"]
 "bench/benchmark_runs.py" = ["E402"]
 "engine/llm_provider.py" = ["E402"]
+# Prefect log-level suppression must run before engine.* imports
+"graph/nodes.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

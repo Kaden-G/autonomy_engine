@@ -11,7 +11,6 @@ from dashboard.rate_limiter import check_rate_limit, get_remaining_runs
 from dashboard.components.pipeline_visual import render_pipeline
 from dashboard.components.trace_timeline import render_timeline
 from dashboard.data_loader import (
-    find_project_dir,
     get_latest_run_id,
     get_pipeline_status,
     is_intake_complete,

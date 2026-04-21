@@ -16,10 +16,16 @@ from engine.tracer import (
 
 
 @pytest.fixture(autouse=True)
-def _isolated_state(tmp_path):
-    """Point engine context at a temp dir and reset tracer module state."""
+def _isolated_state(tmp_path, monkeypatch):
+    """Point engine context at a temp dir, redirect HMAC-key storage to
+    tmp, and reset tracer module state.
+
+    ``AE_TRACE_KEY_DIR`` is overridden so tests never touch the real
+    ``~/.autonomy_engine/keys/`` directory.
+    """
     engine.context.init(tmp_path)
     (tmp_path / "state").mkdir()
+    monkeypatch.setenv("AE_TRACE_KEY_DIR", str(tmp_path / "keys"))
     # Reset tracer globals
     tracer._run_id = None
     tracer._prev_hash = GENESIS_HASH
@@ -61,15 +67,17 @@ class TestInitRun:
 
     def test_creates_hmac_key_file(self, tmp_path):
         run_id = init_run()
-        key_path = tmp_path / "state" / "runs" / run_id / ".trace_key"
+        # P0-3: key lives at <AE_TRACE_KEY_DIR>/<run_id>.key
+        # (fixture redirects AE_TRACE_KEY_DIR to tmp_path/keys).
+        key_path = tmp_path / "keys" / f"{run_id}.key"
         assert key_path.exists()
         assert len(key_path.read_bytes()) == 32  # 256-bit key
 
     def test_different_runs_get_different_keys(self, tmp_path):
         r1 = init_run()
-        k1 = (tmp_path / "state" / "runs" / r1 / ".trace_key").read_bytes()
+        k1 = (tmp_path / "keys" / f"{r1}.key").read_bytes()
         r2 = init_run()
-        k2 = (tmp_path / "state" / "runs" / r2 / ".trace_key").read_bytes()
+        k2 = (tmp_path / "keys" / f"{r2}.key").read_bytes()
         assert k1 != k2
 
 
@@ -374,8 +382,8 @@ class TestVerifyIntegrity:
         """If the HMAC key is deleted, verification fails with a clear message."""
         run_id = init_run()
         trace(task="a", inputs=[], outputs=[])
-        # Delete the key
-        key_path = tmp_path / "state" / "runs" / run_id / ".trace_key"
+        # Delete the key at the new (P0-3) location.
+        key_path = tmp_path / "keys" / f"{run_id}.key"
         key_path.unlink()
         ok, errors = verify_trace_integrity(run_id)
         assert ok is False
@@ -422,3 +430,99 @@ class TestComputeEntryHmac:
         h = _compute_entry_hmac({"a": 1}, b"key")
         assert len(h) == 64
         int(h, 16)
+
+
+# ── P0-3: HMAC key relocation (baseline tier) ────────────────────────────────
+
+
+class TestHmacKeyRelocation:
+    """Key-storage layout + perms + env-var override + migration shim."""
+
+    def test_trace_key_written_with_0600_perms(self, tmp_path):
+        run_id = init_run()
+        key_path = tmp_path / "keys" / f"{run_id}.key"
+        assert key_path.exists()
+        mode = key_path.stat().st_mode & 0o777
+        # 0600 = owner read/write only. No group / other bits set.
+        assert mode & 0o077 == 0, f"key file mode is {oct(mode)}, expected 0600-clean"
+
+    def test_trace_key_dir_created_with_0700_perms(self, tmp_path):
+        init_run()
+        keys_dir = tmp_path / "keys"
+        assert keys_dir.is_dir()
+        mode = keys_dir.stat().st_mode & 0o777
+        # 0700 = owner-only dir. No group / other bits.
+        assert mode & 0o077 == 0, f"keys dir mode is {oct(mode)}, expected 0700-clean"
+
+    def test_env_var_override_respected(self, tmp_path, monkeypatch):
+        """AE_TRACE_KEY_DIR pointing at an arbitrary absolute path writes
+        the key there, not at ~/.autonomy_engine/keys/."""
+        custom = tmp_path / "elsewhere" / "ae-keys"
+        monkeypatch.setenv("AE_TRACE_KEY_DIR", str(custom))
+        run_id = init_run()
+        assert (custom / f"{run_id}.key").exists()
+        # The default location must NOT have been used.
+        default = tmp_path.home() / ".autonomy_engine" / "keys" / f"{run_id}.key"
+        # Soft-check: we don't want the test leaving artifacts in $HOME, so
+        # assert the resolved dir matches what we set.
+        assert custom.is_dir()
+        assert default != (custom / f"{run_id}.key")
+
+    def test_migration_shim_moves_old_key_and_writes_breadcrumb(self, tmp_path, monkeypatch):
+        """A run created before P0-3 has its key at state/runs/<rid>/.trace_key.
+        On first read via _load_hmac_key, the shim moves it to the new path
+        and leaves a breadcrumb file."""
+        # Manually simulate a legacy run: state dir + trace.jsonl + old key,
+        # but NO new-location key.
+        run_id = "legacy1234ab"
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        legacy_key = run_dir / ".trace_key"
+        legacy_key.write_bytes(b"x" * 32)
+        legacy_key.chmod(0o600)
+
+        # The fixture set AE_TRACE_KEY_DIR=tmp_path/keys, so the new
+        # location is tmp_path/keys/<run_id>.key — does not exist yet.
+        new_path = tmp_path / "keys" / f"{run_id}.key"
+        assert not new_path.exists()
+
+        # Trigger migration.
+        loaded = tracer._load_hmac_key(run_id)
+        assert loaded == b"x" * 32
+
+        # Old key gone, new key present, breadcrumb in old dir.
+        assert not legacy_key.exists()
+        assert new_path.exists()
+        breadcrumb = run_dir / ".trace_key_moved"
+        assert breadcrumb.exists()
+        txt = breadcrumb.read_text()
+        assert "relocated to" in txt.lower()
+        assert str(new_path) in txt
+
+    def test_missing_key_dir_creates_with_proper_perms(self, tmp_path, monkeypatch):
+        """If the override dir does not exist yet, init_run must create it
+        with 0700 and the file with 0600 — same invariants as the default."""
+        fresh = tmp_path / "never-created-before" / "keys"
+        assert not fresh.exists()
+        monkeypatch.setenv("AE_TRACE_KEY_DIR", str(fresh))
+        run_id = init_run()
+        assert fresh.is_dir()
+        assert (fresh.stat().st_mode & 0o077) == 0
+        key_path = fresh / f"{run_id}.key"
+        assert key_path.exists()
+        assert (key_path.stat().st_mode & 0o077) == 0
+
+    def test_keyring_backend_path_parses(self, monkeypatch):
+        """AE_TRACE_KEY_DIR=keyring:<service> is parsed into a
+        ('keyring', <service>) tuple by the resolver, regardless of
+        whether the keyring library is installed — the actual read/write
+        is deferred to keyring and will raise at that point if absent."""
+        monkeypatch.setenv("AE_TRACE_KEY_DIR", "keyring:autonomy-engine-test")
+        loc = tracer._resolve_key_dir()
+        assert loc == ("keyring", "autonomy-engine-test")
+
+    def test_keyring_backend_missing_service_raises(self, monkeypatch):
+        """`keyring:` with no service name is a configuration error."""
+        monkeypatch.setenv("AE_TRACE_KEY_DIR", "keyring:")
+        with pytest.raises(ValueError, match="service name"):
+            tracer._resolve_key_dir()

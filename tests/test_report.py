@@ -12,10 +12,16 @@ from engine.tracer import GENESIS_HASH
 
 
 @pytest.fixture(autouse=True)
-def _isolated_context(tmp_path):
-    """Point engine context at a temp dir and reset tracer state."""
+def _isolated_context(tmp_path, monkeypatch):
+    """Point engine context at a temp dir and reset tracer state.
+
+    Redirects AE_TRACE_KEY_DIR into tmp_path so the P0-3 key-relocation
+    logic (and its migration shim) never writes to the real
+    ~/.autonomy_engine/keys/ directory.
+    """
     engine.context.init(tmp_path)
     (tmp_path / "state").mkdir()
+    monkeypatch.setenv("AE_TRACE_KEY_DIR", str(tmp_path / "keys"))
     tracer._run_id = None
     tracer._prev_hash = GENESIS_HASH
     tracer._seq = 0

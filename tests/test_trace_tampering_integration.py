@@ -31,9 +31,15 @@ from engine.tracer import GENESIS_HASH, init_run, trace
 
 @pytest.fixture
 def synthetic_run(tmp_path: Path, monkeypatch):
-    """Build a small run with a valid HMAC chain and yield (state_dir, run_id)."""
+    """Build a small run with a valid HMAC chain and yield (state_dir, run_id).
+
+    Redirects AE_TRACE_KEY_DIR to tmp_path/keys so the test never touches
+    the real ~/.autonomy_engine/keys/ directory. The CLI invoked by the
+    subprocess inherits this env var via the test process's environment.
+    """
     engine.context.init(tmp_path)
     (tmp_path / "state").mkdir()
+    monkeypatch.setenv("AE_TRACE_KEY_DIR", str(tmp_path / "keys"))
 
     # Reset tracer module state between tests — the tracer caches the
     # active run_id and the previous-hash pointer at module scope.
@@ -75,8 +81,10 @@ def _trace_path(state_dir: Path, run_id: str) -> Path:
     return state_dir / "runs" / run_id / "trace.jsonl"
 
 
-def _key_path(state_dir: Path, run_id: str) -> Path:
-    return state_dir / "runs" / run_id / ".trace_key"
+def _key_path(tmp_path: Path, run_id: str) -> Path:
+    """Return the new-location HMAC key path (matches the AE_TRACE_KEY_DIR
+    override set in the fixture)."""
+    return tmp_path / "keys" / f"{run_id}.key"
 
 
 # ── Tests ────────────────────────────────────────────────────────────────────
@@ -115,10 +123,10 @@ def test_hmac_tampering_detected_end_to_end(synthetic_run):
     assert "seq" in result.stderr.lower() or "hmac" in result.stderr.lower()
 
 
-def test_missing_key_exits_with_code_2(synthetic_run):
-    """Delete .trace_key — exit 2, distinguishable from 1."""
+def test_missing_key_exits_with_code_2(synthetic_run, tmp_path):
+    """Delete the HMAC key file — exit 2, distinguishable from 1."""
     state_dir, run_id = synthetic_run
-    _key_path(state_dir, run_id).unlink()
+    _key_path(tmp_path, run_id).unlink()
 
     result = _run_cli(state_dir, run_id)
     assert result.returncode == 2, (

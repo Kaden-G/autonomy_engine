@@ -34,8 +34,12 @@ build/
 .venv/
 venv/
 
-# HMAC trace keys — per-run secrets, must not be committed
+# HMAC trace keys — per-run secrets, must not be committed.
+# Legacy path (pre-P0-3): state/runs/<id>/.trace_key
+# New path (P0-3): ~/.autonomy_engine/keys/<id>.key (outside the repo)
+# .trace_key_moved is a breadcrumb left by the migration shim.
 .trace_key
+.trace_key_moved
 
 # IDE
 .idea/

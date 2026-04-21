@@ -396,6 +396,25 @@ CI enforces this as a property, not a claim. The [`trace-integrity`](.github/wor
 
 Framework mapping: **OWASP ASVS V7.1** (Log Tamper Protection) · **NIST AI RMF MEASURE 2.7** (Traceability).
 
+#### Key management (baseline — P0-3)
+
+The HMAC signing key lives at `~/.autonomy_engine/keys/<run_id>.key` (dir 0700, file 0600). Moving the key out of `state/runs/` closes the "attacker with write access to the trace dir gets both the log and the key" path — the exact scenario the HMAC design is supposed to prevent.
+
+Override with `AE_TRACE_KEY_DIR`:
+
+```bash
+AE_TRACE_KEY_DIR=/absolute/path/to/keys python graph/pipeline.py
+AE_TRACE_KEY_DIR=keyring:autonomy-engine python graph/pipeline.py  # OS keyring
+```
+
+A legacy run with the key at the old `state/runs/<id>/.trace_key` path is auto-migrated on first verification — the key moves to the new location and a `.trace_key_moved` breadcrumb is left in the run dir.
+
+**What this mitigates:** a local attacker with write-only access to `state/runs/` cannot forge entries — they don't have the key.
+
+**What this does NOT mitigate (POAM):** a local attacker running as the *same user* as the engine can read the key from `~/.autonomy_engine/keys/` and forge. The remediation path is optional ed25519 asymmetric signatures (future work) where the signing key never touches the log dir and only the engine host has write access; verifiers use the public key.
+
+Framework mapping: **NIST SP 800-57** (Key Management — separation of keys from data they protect) · **OWASP ASVS V6.2.1**.
+
 ### Workspace Isolation
 
 **What it is:** The test stage runs AI-generated code in a temporary directory with its own isolated environment. Dependencies are installed from the project's requirements and cached for reuse.

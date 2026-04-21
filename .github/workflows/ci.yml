@@ -151,3 +151,44 @@ jobs:
 
       - name: pip-audit dependency check
         run: python -m pip_audit
+
+  # ── Audit trail integrity ─────────────────────────────────────────────────
+  # Maps to: OWASP ASVS V7.1 (Log Tamper Protection), NIST AI RMF MEASURE 2.7.
+  # Turns the "tamper-evident" claim from a design assertion into a property
+  # CI can enforce: (1) synthetic tamper tests demonstrate detection works,
+  # (2) any real state/runs/ in the checkout is verified end-to-end.
+  trace-integrity:
+    name: Audit trail integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.lock
+          pip install -e ".[dev]"
+
+      - name: Run tamper-detection integration tests
+        run: pytest tests/test_trace_tampering_integration.py -v
+
+      - name: Verify recorded run traces (if any in checkout)
+        run: |
+          if [ -d state/runs ] && [ -n "$(ls -A state/runs 2>/dev/null)" ]; then
+            for d in state/runs/*/; do
+              run_id=$(basename "$d")
+              python -m engine.verify_trace --run-id "$run_id" --json
+            done
+          else
+            echo "No recorded runs in this checkout — skipping."
+          fi
+
+      - name: Archive trace on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-trace
+          path: state/runs/**/trace.jsonl

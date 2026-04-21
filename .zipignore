@@ -1,0 +1,41 @@
+# .zipignore — exclusion patterns for `make share-zip`
+#
+# Format: rsync-style patterns, one per line, # for comments.
+# This file is the single source of truth for what `make share-zip` excludes
+# from the shareable zip. The Makefile reads it via `rsync --exclude-from`.
+#
+# Categories below mirror the comment block in the Makefile share-zip target.
+
+# === Secrets & per-run keys (OWASP A02 / CWE-312) ===
+.env
+.env.*
+.env.local
+.trace_key
+*.key
+*.pem
+.streamlit/secrets.toml
+
+# === Pipeline run state (may contain prompts/outputs — CWE-532) ===
+state/
+
+# === Build / lint / test caches ===
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# === Virtual envs and dependency trees ===
+.venv/
+venv/
+env/
+node_modules/
+
+# === VCS internals ===
+.git/
+
+# === Prior zip artifacts ===
+*.zip
+
+# === OS metadata ===
+.DS_Store
+Thumbs.db

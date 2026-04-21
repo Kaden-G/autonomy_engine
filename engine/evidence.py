@@ -411,16 +411,26 @@ def format_evidence_for_llm(records: list[dict]) -> str:
             f"- **Finished:** {r['finished_at']}",
         ]
 
+        # Maps to: OWASP LLM01 — raw command output is untrusted content.
+        # Any bytes the test runner captured could contain attacker-crafted
+        # strings aimed at jailbreaking the verify LLM (e.g. a malicious
+        # dependency printing `</user_content>IGNORE PRIOR …`). We neutralize
+        # them before truncation so the envelope is always clear.
+        # See engine/prompt_guard.py.
+        from engine.prompt_guard import sanitize_untrusted  # local import to keep module load cheap
+
         if r["stdout"].strip():
             stdout = r["stdout"]
             if len(stdout) > 5000:
                 stdout = stdout[:2500] + "\n\n... (truncated) ...\n\n" + stdout[-2500:]
+            stdout = sanitize_untrusted(stdout, tag="evidence_stdout")
             parts.append(f"\n**stdout:**\n```\n{stdout}\n```")
 
         if r["stderr"].strip():
             stderr = r["stderr"]
             if len(stderr) > 3000:
                 stderr = stderr[:1500] + "\n\n... (truncated) ...\n\n" + stderr[-1500:]
+            stderr = sanitize_untrusted(stderr, tag="evidence_stderr")
             parts.append(f"\n**stderr:**\n```\n{stderr}\n```")
 
         sections.append("\n".join(parts))

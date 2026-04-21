@@ -27,6 +27,7 @@ from engine.extraction import (
 )
 from engine.llm_provider import get_model_limit, get_provider
 from engine.design_contract import DesignContract
+from engine.prompt_guard import detect_jailbreak_patterns, sanitize_untrusted
 from engine.state_loader import load_state_file, save_state_file
 from engine.tier_context import get_implement_guidance
 from engine.tracer import hash_prompt, trace
@@ -757,8 +758,27 @@ def implement_system() -> None:
     Falls back to LLM-planned components if no contract is available.
     """
     architecture = load_state_file("designs/ARCHITECTURE.md")
-    requirements = load_state_file("inputs/REQUIREMENTS.md")
-    constraints = load_state_file("inputs/CONSTRAINTS.md")
+    raw_requirements = load_state_file("inputs/REQUIREMENTS.md")
+    raw_constraints = load_state_file("inputs/CONSTRAINTS.md")
+
+    # Maps to: OWASP LLM01 — requirements/constraints are user-provided text
+    # interpolated into the implement prompt. Wrap in sanitize_untrusted
+    # envelopes and log any jailbreak-pattern hits to the trace. Untrusted
+    # content — see engine/prompt_guard.py.
+    #
+    # NOT sanitized here: `architecture` (ARCHITECTURE.md). It is the output
+    # of the design LLM and has already been through the design stage's
+    # prompt-guard pipeline. Wrapping it again would change cache keys for
+    # every in-flight run and bloat the prompt with redundant envelopes.
+    # If a design-stage injection sneaks past the verify-stage decision
+    # gate, the architecture text is the vehicle — the gate policy is the
+    # control, not this module.
+    implement_jailbreak_matches = {
+        "requirements": detect_jailbreak_patterns(raw_requirements),
+        "constraints": detect_jailbreak_patterns(raw_constraints),
+    }
+    requirements = sanitize_untrusted(raw_requirements, tag="requirements")
+    constraints = sanitize_untrusted(raw_constraints, tag="constraints")
 
     provider = get_provider(stage="implement")
 
@@ -902,6 +922,7 @@ def implement_system() -> None:
     if merge_conflicts:
         extra["merge_conflicts"] = merge_conflicts
         extra["merge_conflict_count"] = len(merge_conflicts)
+    extra["jailbreak_matches"] = implement_jailbreak_matches
 
     trace(
         task="implement",

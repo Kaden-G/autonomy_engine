@@ -270,7 +270,10 @@ def trace(
 # ── Integrity verification ──────────────────────────────────────────────────
 
 
-def verify_trace_integrity(run_id: str | None = None) -> tuple[bool, list[str]]:
+def verify_trace_integrity(
+    run_id: str | None = None,
+    state_dir: str | Path | None = None,
+) -> tuple[bool, list[str]]:
     """Replay the HMAC chain and report any breaks.
 
     Returns ``(is_valid, errors)``.  An empty *errors* list means the
@@ -279,15 +282,28 @@ def verify_trace_integrity(run_id: str | None = None) -> tuple[bool, list[str]]:
     Requires the ``.trace_key`` file to be present — if it's missing,
     verification fails with a clear error (the key may have been deleted
     or the run was created before HMAC was added).
+
+    *state_dir* (optional) overrides the context-derived state directory.
+    Used by the ``engine.verify_trace`` CLI to verify runs out-of-context
+    (e.g. a CI runner pointing at a checkout's ``state/`` folder). When
+    ``None`` the path is resolved via ``engine.context.get_state_dir()``
+    as before — fully backward-compatible.
     """
     rid = run_id if run_id is not None else get_run_id()
-    path = get_state_dir() / "runs" / rid / "trace.jsonl"
+    base = Path(state_dir) if state_dir is not None else get_state_dir()
+    path = base / "runs" / rid / "trace.jsonl"
 
     if not path.exists():
         return False, [f"trace.jsonl not found for run {rid}"]
 
-    # Load the signing key for this run's audit log
-    key = _load_hmac_key(rid)
+    # Load the signing key for this run's audit log. When an explicit
+    # state_dir was provided, resolve the key path under it too — otherwise
+    # fall back to the context-aware _load_hmac_key helper.
+    if state_dir is not None:
+        key_path = base / "runs" / rid / _KEY_FILENAME
+        key = key_path.read_bytes() if key_path.exists() else None
+    else:
+        key = _load_hmac_key(rid)
     if key is None:
         return False, [
             f"HMAC key (.trace_key) not found for run {rid}. "

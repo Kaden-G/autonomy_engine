@@ -374,6 +374,28 @@ This section documents what the engine protects against and — just as importan
 
 **What this does NOT protect against:** An attacker with access to both the log file and the key file on disk can forge valid entries. In a production environment, the key should be stored in an external key management system (KMS or HSM). The current design is appropriate for development-time integrity verification, not adversarial forensics.
 
+#### Audit trail verification
+
+Verify a run's HMAC chain locally:
+
+```bash
+python -m engine.verify_trace --run-id <run-id>              # human output
+python -m engine.verify_trace --run-id <run-id> --json       # CI-friendly
+```
+
+Exit codes: **0** chain valid · **1** tamper detected (HMAC mismatch, reorder, missing entry) · **2** verification impossible (missing `.trace_key`, missing `trace.jsonl`).
+
+Example tamper output:
+
+```text
+[INVALID] run=20260421-abc entries=12
+  failure at seq 3: HMAC mismatch — entry has been modified
+```
+
+CI enforces this as a property, not a claim. The [`trace-integrity`](.github/workflows/ci.yml) job runs `tests/test_trace_tampering_integration.py` on every PR — 7 named tests covering HMAC flipping, reorder, deletion, truncation-as-not-tamper, missing-key exit 2 distinct from tamper exit 1, and JSON-output parseability. If the CI checkout contains any `state/runs/*/trace.jsonl`, the job also verifies each of those real runs end-to-end. See [`tests/test_trace_tampering_integration.py`](tests/test_trace_tampering_integration.py) for the live-demo tests.
+
+Framework mapping: **OWASP ASVS V7.1** (Log Tamper Protection) · **NIST AI RMF MEASURE 2.7** (Traceability).
+
 ### Workspace Isolation
 
 **What it is:** The test stage runs AI-generated code in a temporary directory with its own isolated environment. Dependencies are installed from the project's requirements and cached for reuse.

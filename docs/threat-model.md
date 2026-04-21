@@ -13,9 +13,23 @@ doc is in service of that property.
 
 ## Contents
 
+- [Threat model in one paragraph](#threat-model-in-one-paragraph)
 - [Prompt Injection (LLM01)](#prompt-injection-llm01)
-- Framework mappings: OWASP LLM Top 10, NIST AI RMF, MITRE ATLAS
-- Historical POAMs: see also `docs/prefect-sunset-audit.md`
+- [Workspace isolation](#workspace-isolation)
+- [Path traversal protection](#path-traversal-protection)
+- [Content validation](#content-validation)
+- [API key handling](#api-key-handling)
+- [Sharing the project safely](#sharing-the-project-safely)
+- [Audit trail](#audit-trail) (details in [docs/audit-trail.md](audit-trail.md))
+- Historical POAMs: see also [docs/prefect-sunset-audit.md](prefect-sunset-audit.md)
+
+---
+
+## Threat model in one paragraph
+
+The Autonomy Engine treats AI-generated code as untrusted output in a supervised pipeline. Every pipeline action is recorded in an HMAC-SHA256 tamper-evident audit trail that detects after-the-fact log modification — providing chain-of-custody guarantees for autonomous code generation. The engine enforces workspace isolation (generated code cannot overwrite engine files), path traversal protection (no directory escape attacks), contract compliance verification (output must match the approved design), and API key hygiene (secrets never appear in logs or prompts). The explicit non-goal is OS-level sandboxing — the engine assumes a human reviews generated code before deployment, and recommends containerization for higher-threat environments.
+
+This doc documents what the engine protects against and — just as importantly — what it doesn't. Honest threat boundaries are more useful than vague claims.
 
 ---
 
@@ -129,5 +143,57 @@ before the verdict is acted on.
 
 All four primitives are unit-tested in `tests/test_prompt_guard.py`
 (100% coverage) and end-to-end tested in `tests/test_adversarial_inputs.py`.
+
+---
+
+## Workspace isolation
+
+**What it is:** The test stage runs AI-generated code in a temporary directory with its own isolated environment. Dependencies are installed from the project's requirements and cached for reuse.
+
+**What this provides:** File isolation (generated code can't overwrite engine files), dependency isolation (project packages don't pollute the host system), and automatic cleanup.
+
+**What this does NOT provide:** Operating-system-level sandboxing. The generated code runs as the same user with full network and file access. There are no containers, no system-call filtering, and no network restrictions. For running untrusted AI output in a higher-security context, wrap execution in Docker or a similar container. The engine assumes a supervised workflow where a human reviews generated code before deployment.
+
+## Path traversal protection
+
+The extract stage validates every output file path to prevent directory escape attacks (e.g., `../../etc/passwd`). Absolute paths, parent traversal (`..`), and empty path segments are all rejected.
+
+## Content validation
+
+Extracted Python files are validated for correct syntax, resolvable imports, and lint compliance. The contract compliance checker verifies that the output matches the design contract's file list, size budgets, and data type definitions.
+
+**Known limitation:** The type checker uses text matching (checking that type and field names appear in the file), not full code structure analysis. A future improvement would parse actual class definitions for exact matching.
+
+## API key handling
+
+API keys are loaded from a `.env` file (which is excluded from version control) and never appear in audit logs, prompts, or output. A pre-commit hook rejects any attempt to commit files containing key patterns.
+
+**Streamlit Cloud / multi-tenant caveat.** When the dashboard runs on Streamlit Cloud, `dashboard/secrets_bridge.py` copies keys from `st.secrets` into `os.environ` so the pipeline subprocess inherits them. This is safe on Streamlit Cloud because every visitor gets their own container, but session-scoped env vars are visible to all subprocesses spawned by that instance. If you self-host in a shared multi-tenant setup, swap this bridge for a real secrets manager (AWS Secrets Manager, Vault, etc.).
+
+## Sharing the project safely
+
+When sharing this project as a zip (e.g., for code review), use:
+
+```bash
+make share-zip
+```
+
+This target produces `autonomy_engine_<date>_<time>.zip` with a curated exclusion list — `.env` files, `state/` run logs, key material (`*.key`, `*.pem`, `.trace_key`), virtual envs, caches, and OS metadata are all left out. The exclusions live in [`.zipignore`](../.zipignore) as the single source of truth.
+
+Before zipping, the target runs a secret-scan over both the staged file set and high-risk-named files in the working tree (`.env`, `.env.*`, `*.key`, `*.pem`, `.trace_key`). If any file matches a credential pattern (`sk-ant-`, `sk-proj-`, `AKIA…`, `ghp_…`, `xoxb-…`, `-----BEGIN`), **the target refuses to build the zip** and names the offending file. Files ending in `.example`, `.template`, or `.sample` are skipped (they contain illustrative placeholders by design).
+
+After a successful build, the target prints the file size, file count, and full contents listing so you can review before sharing.
+
+> **Limitation:** This protects the `make share-zip` flow only. A developer can still produce a zip via the file manager or `zip -r` directly. A pre-commit hook (`.githooks/pre-commit`) provides the analogous protection on the commit flow.
+
+**Framework mapping:** OWASP A02 (Cryptographic Failures) · CWE-312 (Cleartext Storage of Sensitive Information) · CWE-532 (Insertion of Sensitive Information into Log File).
+
+## Audit trail
+
+Every pipeline action is signed with HMAC-SHA256 and chained so that tampering breaks verification. The key lives outside `state/` (default: `~/.autonomy_engine/keys/<run_id>.key`, dir 0700, file 0600) to close the "attacker with write access to the trace dir gets both the log and the key" path.
+
+Full details — model, CLI, CI enforcement, key-management POAMs, remediation path to ed25519 — live in [docs/audit-trail.md](audit-trail.md).
+
+**Framework mapping:** OWASP ASVS V7.1 · NIST AI RMF MEASURE 2.7 · NIST SP 800-57.
 
 ---

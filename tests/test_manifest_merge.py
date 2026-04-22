@@ -139,3 +139,104 @@ class TestOutputFormat:
         assert isinstance(conflicts, list)
         assert all(isinstance(c, dict) for c in conflicts)
         assert all("path" in c and "chunks" in c and "winner" in c for c in conflicts)
+
+
+# ── Version enrichment (P1-3) ───────────────────────────────────────────────
+# Each conflict now carries a `versions` list so the dashboard can show the
+# human exactly what they are choosing between.
+
+
+class TestVersionEnrichment:
+    def test_conflict_has_versions_list(self):
+        m1 = _manifest(("shared.ts", "v1 content"))
+        m2 = _manifest(("shared.ts", "v2 content"))
+        _, conflicts = _merge_manifests([m1, m2], component_names=["A", "B"])
+        assert "versions" in conflicts[0]
+        assert len(conflicts[0]["versions"]) == 2
+
+    def test_version_entry_has_required_fields(self):
+        m1 = _manifest(("shared.ts", "v1 content"))
+        m2 = _manifest(("shared.ts", "v2 content"))
+        _, conflicts = _merge_manifests([m1, m2], component_names=["A", "B"])
+        v = conflicts[0]["versions"][0]
+        assert set(v.keys()) == {"chunk", "sha256", "size", "content_preview"}
+        assert v["chunk"] == "A"
+        assert v["size"] == len("v1 content")
+        assert v["content_preview"] == "v1 content"
+
+    def test_version_sha256_differs_across_chunks(self):
+        m1 = _manifest(("shared.ts", "v1 content"))
+        m2 = _manifest(("shared.ts", "v2 different content"))
+        _, conflicts = _merge_manifests([m1, m2])
+        hashes = {v["sha256"] for v in conflicts[0]["versions"]}
+        assert len(hashes) == 2
+
+    def test_content_preview_truncated_at_200_chars(self):
+        long_content = "x" * 500
+        m1 = _manifest(("shared.ts", long_content))
+        m2 = _manifest(("shared.ts", "short"))
+        _, conflicts = _merge_manifests([m1, m2])
+        preview = conflicts[0]["versions"][0]["content_preview"]
+        assert preview.startswith("x" * 200)
+        assert preview.endswith("…")
+        assert len(preview) == 201  # 200 chars + ellipsis
+
+    def test_non_conflicting_files_still_single_version(self):
+        """Files that don't conflict should NOT appear in the conflicts list."""
+        m1 = _manifest(("a.ts", "a"), ("shared.ts", "v1"))
+        m2 = _manifest(("b.ts", "b"), ("shared.ts", "v2"))
+        _, conflicts = _merge_manifests([m1, m2])
+        conflict_paths = [c["path"] for c in conflicts]
+        assert "a.ts" not in conflict_paths
+        assert "b.ts" not in conflict_paths
+        assert "shared.ts" in conflict_paths
+
+
+# ── winner_policy parameter (P1-3) ──────────────────────────────────────────
+
+
+class TestWinnerPolicy:
+    def test_default_is_last_writer(self):
+        """Regression lock on the historical default."""
+        m1 = _manifest(("config.ts", "first"))
+        m2 = _manifest(("config.ts", "second"))
+        merged_json, conflicts = _merge_manifests([m1, m2])
+        merged = json.loads(merged_json)
+        assert merged["files"][0]["content"] == "second"
+        assert conflicts[0]["winner"] == "chunk_1"
+
+    def test_explicit_last_matches_default(self):
+        m1 = _manifest(("config.ts", "first"))
+        m2 = _manifest(("config.ts", "second"))
+        merged_last, _ = _merge_manifests([m1, m2], winner_policy="last")
+        merged_default, _ = _merge_manifests([m1, m2])
+        assert merged_last == merged_default
+
+    def test_first_writer_picks_first_chunk(self):
+        m1 = _manifest(("config.ts", "first"))
+        m2 = _manifest(("config.ts", "second"))
+        merged_json, conflicts = _merge_manifests(
+            [m1, m2], component_names=["A", "B"], winner_policy="first"
+        )
+        merged = json.loads(merged_json)
+        assert merged["files"][0]["content"] == "first"
+        assert conflicts[0]["winner"] == "A"
+
+    def test_first_writer_three_way_conflict(self):
+        m1 = _manifest(("utils.ts", "v1"))
+        m2 = _manifest(("utils.ts", "v2"))
+        m3 = _manifest(("utils.ts", "v3"))
+        merged_json, _ = _merge_manifests([m1, m2, m3], winner_policy="first")
+        merged = json.loads(merged_json)
+        assert merged["files"][0]["content"] == "v1"
+
+    def test_policy_does_not_affect_non_conflicting_files(self):
+        """Files with only one source should be present regardless of policy."""
+        m1 = _manifest(("a.ts", "only-in-a"), ("shared.ts", "v1"))
+        m2 = _manifest(("b.ts", "only-in-b"), ("shared.ts", "v2"))
+        merged_json, _ = _merge_manifests([m1, m2], winner_policy="first")
+        merged = json.loads(merged_json)
+        paths = {f["path"]: f["content"] for f in merged["files"]}
+        assert paths["a.ts"] == "only-in-a"
+        assert paths["b.ts"] == "only-in-b"
+        assert paths["shared.ts"] == "v1"  # first policy on the conflict

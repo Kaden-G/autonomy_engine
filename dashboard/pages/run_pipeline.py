@@ -10,6 +10,7 @@ from dashboard.components.page_header import render_page_description
 from dashboard.rate_limiter import check_rate_limit, get_remaining_runs
 from dashboard.components.pipeline_visual import render_pipeline
 from dashboard.components.trace_timeline import render_timeline
+from dashboard.subprocess_env import MissingCredentialsError, build_subprocess_env
 from dashboard.data_loader import (
     get_latest_run_id,
     get_pipeline_status,
@@ -362,6 +363,18 @@ def render(project_dir):
                 st.session_state.pop("show_tier_selection", None)
                 st.stop()
 
+            # Curate the subprocess env: allowlist-only, no inheriting the
+            # full parent os.environ (which on Streamlit Cloud has API keys
+            # injected globally by secrets_bridge).  If no LLM key is
+            # available, fail now with a clear UI message instead of
+            # letting the pipeline die on its first API call.
+            try:
+                child_env = build_subprocess_env()
+            except MissingCredentialsError as exc:
+                st.error(str(exc))
+                st.session_state.pop("show_tier_selection", None)
+                st.stop()
+
             # One checkpoint DB per launch — thread_id is derived inside the
             # graph so concurrent demo visitors don't collide. Persisting to
             # SQLite (not MemorySaver) is what lets the resume-after-gate
@@ -384,6 +397,7 @@ def render(project_dir):
                 else str(project_dir.parent),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
+                env=child_env,
             )
             st.session_state["pipeline_process"] = process
             st.session_state["checkpoint_db"] = checkpoint_db

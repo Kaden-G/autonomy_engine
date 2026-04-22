@@ -27,9 +27,29 @@ notifications:
 
 # Sandbox settings for the test stage.
 # When enabled, checks run in an isolated temp workspace with its own virtualenv.
+#
+# Backend:
+#   local  (default) — copy project to a host tempdir + venv. Filesystem
+#                      isolation only. Fast. Suitable for trusted specs.
+#   docker           — run each check inside an ephemeral container with
+#                      network dropped, read-only root, non-root uid,
+#                      tmpfs /tmp, and CPU + memory caps. Slower (~2-3s
+#                      startup per check), image cached by deps hash.
+#                      Requires a running Docker daemon.
+#                      Maps to: MITRE ATLAS T1609, NIST AI RMF GOVERN 1.4.
+#
+# Docker sub-options (ignored when backend=local):
+#   docker.python_version: "3.11"   # base image tag suffix
+#   docker.cpus: "2.0"              # --cpus flag
+#   docker.memory: "2g"             # --memory / --memory-swap flags
 sandbox:
   enabled: true        # run checks in an isolated copy (default: true)
   install_deps: true   # install requirements.txt / pyproject.toml in the sandbox
+  backend: local       # "local" | "docker"
+  # docker:
+  #   python_version: "3.11"
+  #   cpus: "2.0"
+  #   memory: "2g"
 
 # Verify stage mode:
 #   always_llm  — always call the LLM for verification (original v1.x behavior)

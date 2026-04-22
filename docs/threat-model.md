@@ -27,7 +27,7 @@ doc is in service of that property.
 
 ## Threat model in one paragraph
 
-The Autonomy Engine treats AI-generated code as untrusted output in a supervised pipeline. Every pipeline action is recorded in an HMAC-SHA256 tamper-evident audit trail that detects after-the-fact log modification — providing chain-of-custody guarantees for autonomous code generation. The engine enforces workspace isolation (generated code cannot overwrite engine files), path traversal protection (no directory escape attacks), contract compliance verification (output must match the approved design), and API key hygiene (secrets never appear in logs or prompts). The explicit non-goal is OS-level sandboxing — the engine assumes a human reviews generated code before deployment, and recommends containerization for higher-threat environments.
+The Autonomy Engine treats AI-generated code as untrusted output in a supervised pipeline. Every pipeline action is recorded in an HMAC-SHA256 tamper-evident audit trail that detects after-the-fact log modification — providing chain-of-custody guarantees for autonomous code generation. The engine enforces workspace isolation (generated code cannot overwrite engine files), path traversal protection (no directory escape attacks), contract compliance verification (output must match the approved design), and API key hygiene (secrets never appear in logs or prompts). For higher-threat environments, a pluggable Docker sandbox backend (`sandbox.backend: docker`) runs each check in an ephemeral container with network dropped, read-only root, non-root uid, tmpfs `/tmp`, and CPU + memory caps — see "Workspace isolation" below for the evidence-backed detail.
 
 This doc documents what the engine protects against and — just as importantly — what it doesn't. Honest threat boundaries are more useful than vague claims.
 
@@ -148,11 +148,36 @@ All four primitives are unit-tested in `tests/test_prompt_guard.py`
 
 ## Workspace isolation
 
-**What it is:** The test stage runs AI-generated code in a temporary directory with its own isolated environment. Dependencies are installed from the project's requirements and cached for reuse.
+**What it is:** The test stage runs AI-generated code in an isolated workspace. Two backends are available; select via `sandbox.backend` in `config.yml`:
 
-**What this provides:** File isolation (generated code can't overwrite engine files), dependency isolation (project packages don't pollute the host system), and automatic cleanup.
+| Backend | Isolation | When to use |
+|---|---|---|
+| `local` (default) | Host tempdir + venv. File isolation only. | Trusted specs, fast dev loops. |
+| `docker` | Ephemeral container per check: `--network none`, `--read-only` root, `--tmpfs /tmp`, non-root uid=1000, `--cpus 2.0 --memory 2g`. Image cached by deps hash. | Less-trusted specs, hosted demo, untrusted-input evaluations. |
 
-**What this does NOT provide:** Operating-system-level sandboxing. The generated code runs as the same user with full network and file access. There are no containers, no system-call filtering, and no network restrictions. For running untrusted AI output in a higher-security context, wrap execution in Docker or a similar container. The engine assumes a supervised workflow where a human reviews generated code before deployment.
+**What `local` provides:** File isolation (generated code can't overwrite engine files), dependency isolation (project packages don't pollute the host system), and automatic cleanup.
+
+**What `docker` adds on top of `local`:**
+
+- **Network isolation** — `--network none` drops the container's network namespace, so generated code cannot exfiltrate data or reach out to the internet during checks. Verified end-to-end in `tests/test_docker_sandbox.py::test_network_is_isolated`.
+- **Read-only root filesystem** — `--read-only` plus `--tmpfs /tmp` means the only writable paths are `/tmp` (ephemeral, wiped at container exit) and the bind-mounted `/workspace`. Writes to `/etc`, `/usr`, or anywhere else fail.
+- **Non-root UID** — the image includes a `sandbox` user (uid=1000); containers run as this user, not root, so kernel-level exploits face an unprivileged target.
+- **CPU + memory caps** — `--cpus 2.0 --memory 2g --memory-swap 2g` bound the container's resource use, preventing a runaway LLM-generated loop from starving the host.
+- **Evidence-backed** — every check record includes `backend: "docker"`, `image_digest`, `image_tag`, `isolation_flags`, and `mount_mode: "bind-rw"` so auditors can see exactly what isolation was applied.
+
+**What the Docker backend does NOT (yet) provide — Phase 2 POAMs:**
+
+- No gVisor / Firecracker runtime (`runsc`) — kernel-sharing boundary is the standard Linux container one. Switching requires a `--runtime` flag and a daemon that has the runtime installed.
+- No seccomp allowlist profile — uses Docker's default seccomp filter.
+- No separate writable output volume — workspace is bind-mounted rw for evidence-capture convenience (e.g., `ruff --fix` writes to the host workspace). Hardening path: mount workspace read-only and copy evidence out at teardown.
+- Node.js projects still use the `local` backend — the Docker image template is Python-only for Phase 1. Projects detected as Node fall back with a warning.
+- Host `subprocess.run` still executes a few engine-side helpers (image build, `docker version` probe, venv setup for the `local` path). These run engine code, not AI output, so the isolation claim is unaffected.
+
+**Framework mapping:** MITRE ATLAS T1609 (Container Administration Command) · NIST AI RMF GOVERN 1.4 (Risk management for autonomous systems) · OWASP LLM02 (Insecure Output Handling — untrusted code execution).
+
+**CI verification.** A dedicated CI job `docker-sandbox-tests` runs the Docker backend end-to-end with `AE_REQUIRE_DOCKER=1`, which turns any pytest skip into a hard failure — a broken backend cannot silently go untested.
+
+**Image lifecycle.** Sandbox images carry the `autonomy-engine-sandbox=true` label. Run `make sandbox-gc` to prune images older than 30 days without touching other images.
 
 ## Path traversal protection
 

@@ -2,10 +2,11 @@
 #
 # Targets:
 #   share-zip    Build a shareable zip of the project, with secret-scan gating.
+#   sandbox-gc   Prune Docker sandbox images older than 30 days (scoped by label).
 
 SHELL := /bin/bash
 
-.PHONY: share-zip
+.PHONY: share-zip sandbox-gc
 
 # --- share-zip ---------------------------------------------------------------
 #
@@ -109,3 +110,26 @@ share-zip:
 	unzip -l "$(ZIP_NAME)"; \
 	echo ""; \
 	echo "⚠️  Review the file list above before sharing."
+
+# --- sandbox-gc --------------------------------------------------------------
+#
+# Prune Docker sandbox images older than 30 days (720h).  Scoped by the
+# ``autonomy-engine-sandbox=true`` label so unrelated images are never
+# touched.  Safe to run anytime — actively-used images (same deps hash)
+# will be rebuilt on the next run from Docker's own layer cache.
+#
+# If Docker is not installed, prints a note and exits 0 so the target is
+# still safe to wire into scheduled maintenance without breaking local
+# dev loops.
+sandbox-gc:
+	@if ! command -v docker >/dev/null 2>&1; then \
+		echo "Docker not installed — skipping sandbox-gc."; \
+		exit 0; \
+	fi; \
+	echo "→ Pruning autonomy-engine sandbox images older than 30 days..."; \
+	docker image prune -f \
+		--filter "label=autonomy-engine-sandbox=true" \
+		--filter "until=720h"; \
+	echo "→ Remaining sandbox images:"; \
+	docker image ls --filter "label=autonomy-engine-sandbox=true" \
+		--format "table {{.Repository}}:{{.Tag}}\t{{.CreatedAt}}\t{{.Size}}"

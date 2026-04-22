@@ -142,8 +142,7 @@ def _run_checks_sandboxed(checks: list[dict], project_dir: Path, sandbox_cfg: di
             record = run_check(
                 name=check["name"],
                 command=check["command"],
-                cwd=sb.workspace,
-                env=sb.env,
+                sandbox=sb,
             )
             record["environment"] = env_meta
             save_evidence(record)

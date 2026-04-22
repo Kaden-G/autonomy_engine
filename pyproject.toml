@@ -51,4 +51,7 @@ target-version = "py310"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["slow: tests that create real virtualenvs (~30s each)"]
+markers = [
+    "slow: tests that create real virtualenvs (~30s each)",
+    "docker: tests that require a working Docker CLI + daemon",
+]

@@ -5,6 +5,15 @@ this module copies the project into a temporary directory with its own isolated
 environment (Python virtualenv or Node.js node_modules), optionally installs
 dependencies, runs the tests there, and cleans up afterward.
 
+Backends (selectable via ``sandbox.backend`` in ``config.yml``):
+  * ``local`` — default.  Copies project to a host tempdir + venv / node_modules.
+    Provides filesystem isolation only; checks run as the host user with full
+    network access.  Suitable for trusted specs / dev-loop speed.
+  * ``docker`` — runs each check inside an ephemeral container with network
+    dropped, read-only root, non-root UID, tmpfs /tmp, CPU + memory caps.
+    Suitable for less-trusted specs and the hosted demo.  See
+    :mod:`engine.sandbox_docker`.
+
 This means the AI's code can't accidentally overwrite engine files or pollute
 your system's installed packages.  See the Security Model in README.md for
 what this does and doesn't protect against.
@@ -21,6 +30,7 @@ import sys
 import tempfile
 import time as _time
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
@@ -65,9 +75,14 @@ def collect_host_metadata() -> dict:
 class Sandbox:
     """An isolated workspace with its own virtualenv or node_modules.
 
-    Created by :func:`create_sandbox`.  Use ``env`` when calling
-    ``subprocess.run`` so the sandboxed runtime is on ``PATH``.
+    Created by :func:`create_sandbox`.  Call :meth:`run` to execute a check
+    inside the sandbox — backends (local, docker) override ``run`` but share
+    the rest of the interface.  ``env`` is exposed for backward compatibility
+    with code that still calls ``subprocess.run`` directly; new callers should
+    use :meth:`run` so the backend can dispatch correctly.
     """
+
+    backend: str = "local"
 
     def __init__(
         self,
@@ -96,10 +111,57 @@ class Sandbox:
             env.pop("PYTHONHOME", None)
         return env
 
+    def run(self, command: str, timeout: int = 300) -> dict:
+        """Execute *command* inside the sandbox.
+
+        Returns a dict with keys: ``exit_code``, ``stdout``, ``stderr``,
+        ``started_at``, ``finished_at``.  The caller (``run_check``) wraps
+        this with the command name, argv, cwd, and output hashes.
+
+        Local backend: runs via ``subprocess.run(shell=True)`` on the host
+        with the sandbox runtime on PATH.  Docker backend overrides this.
+        """
+        started_at = datetime.now(timezone.utc).isoformat()
+        stdout = ""
+        stderr = ""
+        exit_code = -1
+
+        try:
+            result = subprocess.run(
+                command,
+                shell=True,  # nosec B602 — commands come from config.yml, never from AI output
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=str(self.workspace),
+                env=self.env,
+            )
+            exit_code = result.returncode
+            stdout = result.stdout
+            stderr = result.stderr
+        except subprocess.TimeoutExpired as exc:
+            stdout = (
+                (exc.stdout or b"").decode(errors="replace")
+                if isinstance(exc.stdout, bytes)
+                else (exc.stdout or "")
+            )
+            stderr = f"Command timed out after {timeout} seconds: {command}"
+        except OSError as exc:
+            stderr = f"Failed to execute command: {exc}"
+
+        return {
+            "exit_code": exit_code,
+            "stdout": stdout,
+            "stderr": stderr,
+            "started_at": started_at,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+        }
+
     def metadata(self) -> dict:
         """Return environment metadata for evidence records."""
         meta = {
             "sandboxed": True,
+            "backend": self.backend,
             "workspace": str(self.workspace),
             "project_type": self.project_type,
             "platform": platform.platform(),
@@ -368,20 +430,39 @@ def create_sandbox(
     Detects project type (Node.js or Python) and sets up either
     ``node_modules`` or a virtualenv accordingly.
 
-    If a cached venv exists for the same dependency spec, reuse it.
-    Yields a :class:`Sandbox` whose ``.workspace`` is the isolated copy
-    and whose ``.env`` activates the runtime.  The temp directory is
-    deleted when the context manager exits.
+    Backend is selected via ``sandbox_cfg["backend"]`` (default ``"local"``).
+    The ``"docker"`` backend runs each check inside an ephemeral container —
+    see :mod:`engine.sandbox_docker`.  Node.js is supported only by the
+    ``local`` backend in Phase 1.
+
+    If a cached venv exists for the same dependency spec, reuse it (local
+    backend only).  Yields a :class:`Sandbox` whose ``.workspace`` is the
+    isolated copy.  The temp directory is deleted when the context manager
+    exits.
     """
+    cfg = sandbox_cfg or {}
+    backend = (cfg.get("backend") or "local").lower()
+
     tmpdir = tempfile.mkdtemp(prefix="ae_sandbox_")
     workspace = Path(tmpdir) / "project"
 
     try:
         shutil.copytree(project_dir, workspace)
 
-        cfg = sandbox_cfg or {}
         project_type = detect_project_type(workspace)
-        logger.info("Sandbox project type detected: %s", project_type)
+        logger.info("Sandbox project type detected: %s (backend=%s)", project_type, backend)
+
+        if backend == "docker":
+            if project_type == "node":
+                logger.warning(
+                    "Docker backend does not yet support Node.js projects; falling back to local."
+                )
+            else:
+                from engine.sandbox_docker import setup_docker_sandbox
+
+                sb = setup_docker_sandbox(workspace, install_deps, cfg)
+                yield sb
+                return
 
         if project_type == "node":
             sb = _setup_node_sandbox(workspace, install_deps, cfg)

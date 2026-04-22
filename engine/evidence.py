@@ -272,9 +272,10 @@ def _build_python_import_check_command(project_dir: Path) -> str:
 def run_check(
     name: str,
     command: str,
-    cwd: Path,
+    cwd: Path | None = None,
     timeout: int = 300,
     env: dict | None = None,
+    sandbox=None,
 ) -> dict:
     """Execute a single approved command and return a structured evidence record.
 
@@ -282,44 +283,60 @@ def run_check(
     responsibility belongs to the caller (``test_system``), which only
     passes commands read from ``config.yml``.
 
-    *env* is passed to ``subprocess.run``; ``None`` inherits the parent
-    process environment.
+    When *sandbox* is provided, execution is dispatched through the
+    sandbox's backend (local subprocess, Docker container, etc.) and *cwd*
+    / *env* are ignored.  This is the preferred path — it makes the
+    backend substitutable.  When *sandbox* is ``None``, the command runs
+    on the host via ``subprocess.run`` (kept for the non-sandboxed path
+    in tasks/test.py and existing tests).
     """
-    started_at = datetime.now(timezone.utc).isoformat()
-    stdout = ""
-    stderr = ""
-    exit_code = -1
+    if sandbox is not None:
+        raw = sandbox.run(command, timeout=timeout)
+        effective_cwd = str(sandbox.workspace)
+        exit_code = raw["exit_code"]
+        stdout = raw["stdout"]
+        stderr = raw["stderr"]
+        started_at = raw["started_at"]
+        finished_at = raw["finished_at"]
+    else:
+        if cwd is None:
+            raise TypeError("run_check requires either cwd= or sandbox=")
+        effective_cwd = str(cwd)
+        started_at = datetime.now(timezone.utc).isoformat()
+        stdout = ""
+        stderr = ""
+        exit_code = -1
 
-    try:
-        result = subprocess.run(
-            command,
-            shell=True,  # nosec B602 — commands come from config.yml, never from AI output
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            cwd=str(cwd),
-            env=env,
-        )
-        exit_code = result.returncode
-        stdout = result.stdout
-        stderr = result.stderr
-    except subprocess.TimeoutExpired as exc:
-        stdout = (
-            (exc.stdout or b"").decode(errors="replace")
-            if isinstance(exc.stdout, bytes)
-            else (exc.stdout or "")
-        )
-        stderr = f"Command timed out after {timeout} seconds: {command}"
-    except OSError as exc:
-        stderr = f"Failed to execute command: {exc}"
+        try:
+            result = subprocess.run(
+                command,
+                shell=True,  # nosec B602 — commands come from config.yml, never from AI output
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=effective_cwd,
+                env=env,
+            )
+            exit_code = result.returncode
+            stdout = result.stdout
+            stderr = result.stderr
+        except subprocess.TimeoutExpired as exc:
+            stdout = (
+                (exc.stdout or b"").decode(errors="replace")
+                if isinstance(exc.stdout, bytes)
+                else (exc.stdout or "")
+            )
+            stderr = f"Command timed out after {timeout} seconds: {command}"
+        except OSError as exc:
+            stderr = f"Failed to execute command: {exc}"
 
-    finished_at = datetime.now(timezone.utc).isoformat()
+        finished_at = datetime.now(timezone.utc).isoformat()
 
     return {
         "name": name,
         "command": command,
         "argv": shlex.split(command),
-        "cwd": str(cwd),
+        "cwd": effective_cwd,
         "started_at": started_at,
         "finished_at": finished_at,
         "exit_code": exit_code,

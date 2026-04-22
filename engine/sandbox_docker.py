@@ -146,6 +146,38 @@ def _build_dockerfile(workspace: Path, py_version: str, deps_hash: str) -> str:
     )
 
 
+def _make_workspace_writable_by_container(workspace: Path) -> None:
+    """Grant the non-root container user (uid=1000) write access to *workspace*.
+
+    Docker Desktop on macOS/Windows transparently rewrites uids through its
+    file-sharing layer, so bind-mounted paths "just work" for non-root
+    container users.  On native Linux (including GitHub Actions runners),
+    there's no such remapping: a host path owned by uid X is exposed to the
+    container with uid X, and a container running as uid 1000 cannot write
+    to it.
+
+    Since the workspace is an ephemeral tempdir under ``/tmp`` that gets
+    deleted when the sandbox context exits, setting permissive modes (0o777
+    on dirs, 0o666 on files) is safe — nothing persists and no real host
+    asset is exposed.  This makes the ``bind-rw`` contract hold on Linux.
+    """
+    for root, dirs, files in os.walk(workspace):
+        try:
+            os.chmod(root, 0o777)
+        except OSError:
+            pass
+        for name in files:
+            try:
+                os.chmod(os.path.join(root, name), 0o666)
+            except OSError:
+                pass
+        for name in dirs:
+            try:
+                os.chmod(os.path.join(root, name), 0o777)
+            except OSError:
+                pass
+
+
 def _image_exists(tag: str) -> bool:
     """Return True if a local image with *tag* already exists."""
     try:
@@ -274,7 +306,6 @@ class DockerSandbox(Sandbox):
             "--read-only",
             "--tmpfs",
             "/tmp:rw,exec,size=512m",  # nosec B108 — /tmp inside the container, not a host path
-
             "--user",
             str(NON_ROOT_UID),
             "--cpus",
@@ -398,6 +429,11 @@ def setup_docker_sandbox(workspace: Path, install_deps: bool, cfg: dict) -> Dock
     build_time = _monotonic() - t0
 
     digest = _image_digest(tag)
+
+    # Ensure the bind-mounted workspace is writable by the container's
+    # non-root user (uid=1000).  On Linux CI this is load-bearing — without
+    # it, `echo > marker.txt` inside the container fails with EACCES.
+    _make_workspace_writable_by_container(workspace)
 
     # deps_installed reflects whether the image carries the deps layer.
     # Even if install_deps=False at the engine level, the image was built

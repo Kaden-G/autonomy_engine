@@ -315,6 +315,18 @@ class TestGetGatePolicy:
         engine.context.init(tmp_path)
         assert get_gate_policy("implement").policy == "skip"
 
+    def test_project_yaml_implement_policy_is_pause(self, tmp_path):
+        """Regression lock: templates/DECISION_GATES.yml must set implement →
+        pause with default_option='use_last_writer_wins' for the
+        manifest_conflict gate (P1-3).  Uses a tmp project with NO local
+        templates dir so get_templates_dir() falls back to the engine's
+        shipped templates/.
+        """
+        engine.context.init(tmp_path)
+        policy = get_gate_policy("implement")
+        assert policy.policy == "pause"
+        assert policy.default_option == "use_last_writer_wins"
+
 
 # ── handle_gate ────────────────────────────────────────────────────────────
 

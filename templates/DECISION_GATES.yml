@@ -4,9 +4,9 @@ gates:
     default_option: null
     description: "Architecture choice when multiple viable approaches identified"
   implement:
-    policy: "skip"
-    default_option: null
-    description: "Implementation gates supported but no trigger exists yet"
+    policy: "pause"
+    default_option: "use_last_writer_wins"
+    description: "Human arbitration when chunks produce conflicting file paths (manifest_conflict)"
   test:
     policy: "skip"
     default_option: "continue"

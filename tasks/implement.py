@@ -15,11 +15,13 @@ Two modes:
 import json
 import logging
 import re
+from typing import Literal
 
 from engine.compat import task
 
 from engine.cache import build_cache_key, cache_lookup, cache_save, hash_content, hash_params
 from engine.context import get_prompts_dir
+from engine.decision_gates import DecisionRequired, decision_exists, load_decision
 from engine.extraction import (
     extract_json_block,
     extract_ts_type_signatures,
@@ -346,55 +348,88 @@ def _recover_manifest(provider, response: str) -> str:
         ) from exc
 
 
+def _summarize_file_version(file_entry: dict, chunk_name: str) -> dict:
+    """Return a compact summary of a manifest file entry for conflict display.
+
+    Keeps the dashboard lightweight — full content is in the original
+    chunks; the summary is enough for a human to tell versions apart
+    and make a policy choice.
+    """
+    content = file_entry.get("content", "")
+    preview = content[:200]
+    if len(content) > 200:
+        preview += "…"
+    return {
+        "chunk": chunk_name,
+        "sha256": hash_content(content),
+        "size": len(content),
+        "content_preview": preview,
+    }
+
+
 def _merge_manifests(
     manifest_jsons: list[str],
     component_names: list[str] | None = None,
+    winner_policy: Literal["last", "first"] = "last",
 ) -> tuple[str, list[dict]]:
     """Merge multiple per-component manifests into a single manifest.
 
-    Returns ``(merged_json, conflicts)`` where *conflicts* is a list of
-    dicts describing duplicate paths::
+    Returns ``(merged_json, conflicts)`` where each conflict dict has::
 
         {"path": "src/types/index.ts",
          "chunks": ["Core Types", "Database Layer"],
-         "winner": "Database Layer"}
+         "winner": "Database Layer",
+         "versions": [
+             {"chunk": "Core Types",     "sha256": "...", "size": 410, "content_preview": "..."},
+             {"chunk": "Database Layer", "sha256": "...", "size": 487, "content_preview": "..."},
+         ]}
 
-    Last-writer-wins is preserved for backward compatibility, but
-    conflicts are now surfaced so they can be logged and traced.
+    ``winner_policy`` controls which chunk's content ends up in the
+    merged manifest when a path is produced by multiple chunks:
+
+    * ``"last"`` (default) — last writer wins; matches historical
+      behavior and keeps existing tests green.
+    * ``"first"`` — first writer wins; reachable through the
+      ``manifest_conflict`` decision gate's ``use_first_writer``
+      option.
+
+    Conflicts are ALWAYS surfaced in the return value regardless of
+    policy, so the caller can raise ``DecisionRequired`` once per run.
     """
     names = component_names or [f"chunk_{i}" for i in range(len(manifest_jsons))]
 
-    # Track which chunk(s) produced each path
-    path_owners: dict[str, list[str]] = {}
-    seen: dict[str, dict] = {}
+    # Track every version per path so we can compute per-chunk summaries
+    # for the conflict payload.  dict insertion order preserves arrival
+    # order, which we rely on for "first" / "last" policy choice.
+    path_versions: dict[str, list[tuple[str, dict]]] = {}
 
     for mj, chunk_name in zip(manifest_jsons, names):
         parsed = json.loads(mj)
         for f in parsed["files"]:
             path = f["path"]
-            if path in path_owners:
-                path_owners[path].append(chunk_name)
-            else:
-                path_owners[path] = [chunk_name]
-            seen[path] = f
+            path_versions.setdefault(path, []).append((chunk_name, f))
 
     # Build conflict report
     conflicts: list[dict] = []
-    for path, owners in path_owners.items():
-        if len(owners) > 1:
+    for path, versions in path_versions.items():
+        if len(versions) > 1:
+            owners = [name for name, _ in versions]
+            winner_name = owners[0] if winner_policy == "first" else owners[-1]
             conflict = {
                 "path": path,
                 "chunks": owners,
-                "winner": owners[-1],  # last-writer-wins
+                "winner": winner_name,
+                "versions": [_summarize_file_version(entry, name) for name, entry in versions],
             }
             conflicts.append(conflict)
             logger.warning(
                 "Manifest conflict: '%s' produced by %d chunks %s — "
-                "keeping version from '%s' (last-writer-wins).",
+                "keeping version from '%s' (winner_policy=%s).",
                 path,
                 len(owners),
                 owners,
-                owners[-1],
+                winner_name,
+                winner_policy,
             )
 
     if conflicts:
@@ -406,8 +441,62 @@ def _merge_manifests(
             len(conflicts),
         )
 
-    merged = {"files": list(seen.values())}
+    # Select the winner entry per path based on policy
+    merged_files: list[dict] = []
+    for path, versions in path_versions.items():
+        if len(versions) == 1 or winner_policy == "last":
+            merged_files.append(versions[-1][1])
+        else:  # "first"
+            merged_files.append(versions[0][1])
+
+    merged = {"files": merged_files}
     return json.dumps(merged, indent=2), conflicts
+
+
+def _apply_manifest_conflict_gate(
+    manifest_json: str,
+    merge_conflicts: list[dict],
+    all_manifests: list[str],
+    component_names: list[str],
+) -> tuple[str, list[dict]]:
+    """Gate manifest conflicts through a human decision (P1-3).
+
+    When chunks produce colliding paths, the contract system's "don't
+    reinvent the same type" guarantee has broken somewhere — silently
+    accepting last-writer-wins defeats the contract.
+
+    Flow:
+      1. If conflicts exist and no decision recorded, persist the
+         conflict report to ``state/runs/<id>/implementations/
+         MANIFEST_CONFLICTS.json`` and raise
+         ``DecisionRequired("manifest_conflict", "implement", ...)``.
+      2. On resume (decision recorded), apply the human's choice:
+         - ``abort`` → raise ``RuntimeError``
+         - ``use_first_writer`` → re-merge with first-writer policy
+         - ``use_last_writer_wins`` → keep the default merge as-is
+
+    Returns possibly-updated ``(manifest_json, merge_conflicts)``.
+    """
+    if merge_conflicts and not decision_exists("manifest_conflict"):
+        save_state_file(
+            "implementations/MANIFEST_CONFLICTS.json",
+            json.dumps(merge_conflicts, indent=2),
+        )
+        raise DecisionRequired(
+            "manifest_conflict",
+            "implement",
+            ["use_last_writer_wins", "use_first_writer", "abort"],
+        )
+
+    if decision_exists("manifest_conflict"):
+        record = load_decision("manifest_conflict")
+        selected = record["selected"]
+        if selected == "abort":
+            raise RuntimeError("Manifest conflict decision was 'abort'")
+        if selected == "use_first_writer":
+            return _merge_manifests(all_manifests, component_names, winner_policy="first")
+
+    return manifest_json, merge_conflicts
 
 
 # ── Chunked implementation ───────────────────────────────────────────────────
@@ -880,6 +969,10 @@ def implement_system() -> None:
         markdown = "\n\n---\n\n".join(all_markdowns)
         component_names = [c["name"] for c in components]
         manifest_json, merge_conflicts = _merge_manifests(all_manifests, component_names)
+        manifest_json, merge_conflicts = _apply_manifest_conflict_gate(
+            manifest_json, merge_conflicts, all_manifests, component_names
+        )
+
         cache_key = f"chunked_{len(components)}_components"
         cache_hit = False
 

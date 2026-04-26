@@ -21,7 +21,7 @@ This is also a project *about* AI-supervised pipelines — building it with AI-a
 ## Setup
 
 ```bash
-pip install -r requirements.lock    # production: pinned versions
+pip install -r requirements.txt    # production: pinned versions
 pip install -e ".[dev,dashboard]"   # editable with dev tools + dashboard
 cp .env.example .env                # add your ANTHROPIC_API_KEY
 git config core.hooksPath .githooks # pre-commit key-scan
@@ -48,7 +48,7 @@ Bandit (Python SAST — Static Application Security Testing) scans the engine fo
 
 ### Dependency audit (pip-audit)
 
-pip-audit checks all installed packages against the Python Advisory Database for known vulnerabilities. Results for project dependencies fluctuate as upstream CVEs are published and patched — check the CI `security` job for the current status. Project dependencies are pinned in `requirements.lock` for reproducibility.
+pip-audit checks all installed packages against the Python Advisory Database for known vulnerabilities. Results for project dependencies fluctuate as upstream CVEs are published and patched — check the CI `security` job for the current status. Project dependencies are pinned in `requirements.txt` for reproducibility.
 
 ### Audit trail integrity (tamper tests)
 

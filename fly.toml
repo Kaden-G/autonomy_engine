@@ -1,0 +1,51 @@
+# Fly.io deployment config for the Autonomy Engine dashboard.
+# See docs/deployment.md for the full setup walkthrough.
+#
+# To deploy:
+#   fly auth login
+#   fly launch --copy-config --no-deploy   (generates the app, keeps this config)
+#   fly secrets set ANTHROPIC_API_KEY=sk-ant-...
+#   fly deploy
+#
+# Edit `app` below to match the name you picked at `fly launch`.
+
+# CHANGE ME — pick a unique app name when you run `fly launch`.
+# Convention: kebab-case, includes "autonomy-engine" so URL is self-describing.
+app = "autonomy-engine"
+
+# Region close to most US-based interviewers. iad = N. Virginia.
+# Other options: ord (Chicago), sjc (San Jose), lhr (London), syd (Sydney).
+primary_region = "iad"
+
+# Use the existing multi-stage Dockerfile.
+[build]
+  dockerfile = "Dockerfile"
+
+# HTTP service: bind Streamlit's internal port (8501) to public 80/443.
+[http_service]
+  internal_port = 8501
+  force_https = true
+  # ── Persistence knobs (the whole reason for using Fly over Streamlit Cloud) ──
+  # auto_stop_machines = false:    keep the VM running even on idle.
+  # min_machines_running = 1:      always have one warm machine ready to serve.
+  # No cold starts. Tradeoff: ~$3-5/mo vs. free-but-sleepy.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+# Smallest VM that fits Streamlit + langgraph comfortably.
+# 256MB is too tight (langchain + pydantic alone use ~150MB at idle).
+# 512MB shared-cpu-1x is ~$3.89/mo, comfortably under the $5/mo Hobby credit.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+# Health check uses Streamlit's built-in endpoint so Fly knows when the app
+# is ready to serve. The Dockerfile's HEALTHCHECK is for local Docker; this
+# is the Fly-side equivalent and is what controls rolling-deploy readiness.
+[[http_service.checks]]
+  grace_period = "30s"
+  interval = "30s"
+  method = "GET"
+  timeout = "5s"
+  path = "/_stcore/health"

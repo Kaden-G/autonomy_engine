@@ -34,9 +34,11 @@ RUN pip install --no-cache-dir -e .
 #
 # Streamlit settings:
 #   - headless mode (no browser auto-open)
-#   - bind to 0.0.0.0 so Docker port-mapping works
-#   - disable CORS for local dev convenience
-#   - disable XSRF protection (safe behind Docker network)
+#   - bind to 0.0.0.0 so the platform port-mapping works (Fly, Render, etc.)
+#   - CORS disabled (Streamlit's CORS is for cross-origin Streamlit-to-Streamlit;
+#     irrelevant for our single-app deploy)
+#   - XSRF protection ENABLED (this image gets deployed to public URLs;
+#     "safe behind Docker network" is no longer the deployment posture)
 #
 # Engine settings:
 #   - JSON-lines logging for structured output in container logs
@@ -46,7 +48,7 @@ ENV STREAMLIT_SERVER_HEADLESS=true \
     STREAMLIT_SERVER_PORT=8501 \
     STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
     STREAMLIT_SERVER_ENABLE_CORS=false \
-    STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false \
+    STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=true \
     AE_LOG_FORMAT=json
 
 EXPOSE 8501

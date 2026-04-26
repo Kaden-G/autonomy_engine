@@ -48,14 +48,16 @@ def _clear_form():
 
 
 def _run_llm_suggestions() -> None:
-    """Call intake._generate_spec_suggestions() with the form's seed fields.
+    """Call intake._generate_spec_suggestions_or_raise() with the form's seed fields.
 
     On success, merge the generated requirements/acceptance/artifacts into the
     form session_state so the user can review and edit. Gated by the shared
-    rate limiter so hosted-demo visitors can't exhaust the budget.
+    rate limiter so hosted-demo visitors can't exhaust the budget. On
+    failure, surfaces the actual reason via st.error — not just a generic
+    "generation failed" message.
     """
     from dashboard.rate_limiter import check_rate_limit
-    from intake.intake import _generate_spec_suggestions
+    from intake.intake import SpecSuggestionError, _generate_spec_suggestions_or_raise
 
     if not check_rate_limit():
         # check_rate_limit() already showed the user a warning.
@@ -67,14 +69,16 @@ def _run_llm_suggestions() -> None:
         "domain": st.session_state.get("cp_domain", "software"),
     }
 
-    with st.spinner("Generating draft from your description…"):
-        suggestions = _generate_spec_suggestions(seed)
-
-    if not suggestions:
-        st.error(
-            "Generation failed — the LLM did not return a valid spec. "
-            "Check the logs for details and try again, or fill in the fields manually."
-        )
+    try:
+        with st.spinner("Generating draft from your description…"):
+            suggestions = _generate_spec_suggestions_or_raise(seed)
+    except SpecSuggestionError as exc:
+        st.error(f"Generation failed: {exc}")
+        return
+    except Exception as exc:
+        # Belt-and-suspenders for any failure mode that slipped past the
+        # SpecSuggestionError wrapper. Still beats the old silent "None".
+        st.error(f"Unexpected error during generation: {type(exc).__name__}: {exc}")
         return
 
     # Merge generated fields into the form. _generate_spec_suggestions returns

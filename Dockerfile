@@ -40,19 +40,22 @@ RUN mkdir -p state
 # Streamlit settings:
 #   - headless mode (no browser auto-open)
 #   - bind to 0.0.0.0 so the platform port-mapping works (Fly, Render, etc.)
-#   - CORS disabled (Streamlit's CORS is for cross-origin Streamlit-to-Streamlit;
-#     irrelevant for our single-app deploy)
 #   - XSRF protection ENABLED (this image gets deployed to public URLs;
-#     "safe behind Docker network" is no longer the deployment posture)
+#     "safe behind Docker network" is no longer the deployment posture).
+#     Note: we deliberately DON'T set STREAMLIT_SERVER_ENABLE_CORS=false —
+#     Streamlit auto-overrides it to true when XSRF is on (and warns loudly
+#     about the incompatibility), so leaving it at the default keeps logs
+#     clean without changing security posture.
 #
 # Engine settings:
 #   - JSON-lines logging for structured output in container logs
+#   - AUTONOMY_ENGINE_PROJECT_DIR pinned so find_project_dir() is robust
+#     against future cwd changes
 #
 ENV STREAMLIT_SERVER_HEADLESS=true \
     STREAMLIT_SERVER_ADDRESS=0.0.0.0 \
     STREAMLIT_SERVER_PORT=8501 \
     STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
-    STREAMLIT_SERVER_ENABLE_CORS=false \
     STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=true \
     AE_LOG_FORMAT=json \
     AUTONOMY_ENGINE_PROJECT_DIR=/app

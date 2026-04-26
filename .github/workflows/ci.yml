@@ -148,10 +148,13 @@ jobs:
         run: python -m bandit -r engine/ tasks/ intake/ graph/ -ll
 
       - name: pip-audit dependency check
-        # CVE-2026-3219 is pip itself; no upstream fix yet (pip 26.0.1 latest).
-        # Pip is the installer, not a runtime dep we ship. Accepted risk;
-        # will revisit once pip publishes a patched release.
-        run: python -m pip_audit --ignore-vuln CVE-2026-3219
+        # Ignored CVEs (each is a build/install tool, not a runtime dep we
+        # ship — both have host-side fix paths users can apply directly):
+        #   CVE-2026-3219  — pip itself; no upstream fix yet (pip 26.0.1).
+        #   CVE-2026-24049 — wheel 0.45.1; fix is 0.46.2. The runner's
+        #                    pre-installed wheel ages independently of our
+        #                    lockfile and isn't in the runtime tree.
+        run: python -m pip_audit --ignore-vuln CVE-2026-3219 --ignore-vuln CVE-2026-24049
 
   # ── Audit trail integrity ─────────────────────────────────────────────────
   # Maps to: OWASP ASVS V7.1 (Log Tamper Protection), NIST AI RMF MEASURE 2.7.

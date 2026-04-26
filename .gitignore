@@ -17,6 +17,11 @@ customer_database/
 # Benchmark results
 bench/results_*.json
 
+# Local-only artifacts (private reviews, baseline snapshots, scratch notes)
+REVIEW_*.md
+baseline_coverage.txt
+*.scratch.md
+
 # Python
 __pycache__/
 *.py[cod]

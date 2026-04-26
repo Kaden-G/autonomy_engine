@@ -239,8 +239,8 @@ state/                Runtime artifacts (excluded from version control)
   sandbox_cache/      Cached test environments
 
 models.yml            Model registry — output limits and pricing per model
-requirements.lock     Pinned production dependencies (pip-compile output)
-requirements-dev.lock Pinned dev dependencies (pip-compile output)
+requirements.txt     Pinned production dependencies (pip-compile output)
+requirements-dev.txt Pinned dev dependencies (pip-compile output)
 Dockerfile            Multi-stage container build (dashboard)
 docker-compose.yml    One-command launch with volume mounts
 .dockerignore         Keeps build context lean

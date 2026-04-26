@@ -52,7 +52,7 @@ That's it. The dashboard is running. Create a project, pick a tier, launch a bui
 ```bash
 git clone https://github.com/Kaden-G/autonomy_engine.git
 cd autonomy_engine
-pip install -r requirements.lock   # pinned production deps
+pip install -r requirements.txt   # pinned production deps
 pip install -e ".[dashboard]"      # adds Streamlit + Plotly
 cp .env.example .env               # add your ANTHROPIC_API_KEY
 streamlit run dashboard/app.py     # → http://localhost:8501
@@ -61,7 +61,7 @@ streamlit run dashboard/app.py     # → http://localhost:8501
 ### Option C: CLI only (no dashboard)
 
 ```bash
-pip install -r requirements.lock
+pip install -r requirements.txt
 pip install -e .
 cp .env.example .env               # add your ANTHROPIC_API_KEY
 python -m intake.intake new-project
@@ -71,7 +71,7 @@ python graph/pipeline.py           # LangGraph orchestration (v2.0)
 ## Setup (development)
 
 ```bash
-pip install -r requirements.lock    # production: pinned versions
+pip install -r requirements.txt    # production: pinned versions
 pip install -e ".[dev,dashboard]"   # editable with dev tools + dashboard
 ```
 

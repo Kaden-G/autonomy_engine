@@ -20,8 +20,8 @@ RUN apt-get update && \
 WORKDIR /app
 
 # --- Dependency layer (cached until lock file changes) ----------------------
-COPY requirements.lock pyproject.toml ./
-RUN pip install --no-cache-dir -r requirements.lock && \
+COPY requirements.txt pyproject.toml ./
+RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir streamlit plotly
 
 # --- Application layer ------------------------------------------------------

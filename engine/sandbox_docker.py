@@ -163,17 +163,19 @@ def _make_workspace_writable_by_container(workspace: Path) -> None:
     """
     for root, dirs, files in os.walk(workspace):
         try:
-            os.chmod(root, 0o777)
+            # nosec B103 — workspace is an ephemeral tempdir; world-writable
+            # is intentional so the non-root container user can write here.
+            os.chmod(root, 0o777)  # nosec B103
         except OSError:
             pass
         for name in files:
             try:
-                os.chmod(os.path.join(root, name), 0o666)
+                os.chmod(os.path.join(root, name), 0o666)  # nosec B103
             except OSError:
                 pass
         for name in dirs:
             try:
-                os.chmod(os.path.join(root, name), 0o777)
+                os.chmod(os.path.join(root, name), 0o777)  # nosec B103
             except OSError:
                 pass
 

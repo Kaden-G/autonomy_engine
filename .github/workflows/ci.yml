@@ -15,11 +15,10 @@
 #   - Test matrix covers compatibility; the others are version-independent.
 #   - Import check catches missing deps that unit tests might not exercise.
 #
-# Deprecated-test policy:
-#   tests/test_production_readiness.py is gated behind RUN_DEPRECATED_TESTS=1
-#   (retires 2026-05-21 with the Prefect flow). CI does not set that var, so
-#   the legacy Prefect flow tests are skipped by default. To run them locally
-#   during the sunset window: RUN_DEPRECATED_TESTS=1 pytest tests/…
+# Note: Prefect orchestration was retired on 2026-04-25 (ahead of the
+# 2026-05-21 sunset target) as part of the deps CVE cleanup. The
+# tests/test_production_readiness.py module that exercised the Prefect
+# flow has been removed; this comment is a tombstone for git archaeology.
 # --------------------------------------------------------------------------
 
 name: CI
@@ -114,7 +113,6 @@ jobs:
           import engine.tier_context
           import engine.cost_estimator
           import engine.cache
-          import flows.autonomous_flow  # LEGACY-GATED — retires 2026-05-21; see docs/prefect-sunset-audit.md
           import intake.schema
           import intake.renderer
           import tasks.bootstrap
@@ -147,10 +145,13 @@ jobs:
 
       - name: Bandit SAST scan
         # -ll = only report MEDIUM and above; --severity-level high = fail on HIGH
-        run: python -m bandit -r engine/ flows/ tasks/ intake/ -ll
+        run: python -m bandit -r engine/ tasks/ intake/ graph/ -ll
 
       - name: pip-audit dependency check
-        run: python -m pip_audit
+        # CVE-2026-3219 is pip itself; no upstream fix yet (pip 26.0.1 latest).
+        # Pip is the installer, not a runtime dep we ship. Accepted risk;
+        # will revisit once pip publishes a patched release.
+        run: python -m pip_audit --ignore-vuln CVE-2026-3219
 
   # ── Audit trail integrity ─────────────────────────────────────────────────
   # Maps to: OWASP ASVS V7.1 (Log Tamper Protection), NIST AI RMF MEASURE 2.7.

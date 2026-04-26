@@ -30,6 +30,11 @@ COPY . .
 # Install the engine package in editable mode so imports resolve cleanly.
 RUN pip install --no-cache-dir -e .
 
+# .dockerignore excludes state/ so runtime artifacts don't bloat the image,
+# but dashboard.data_loader.find_project_dir() uses state/'s presence as the
+# project-root marker. Pre-create an empty state/ so the dashboard finds itself.
+RUN mkdir -p state
+
 # --- Runtime configuration ---------------------------------------------------
 #
 # Streamlit settings:
@@ -49,7 +54,8 @@ ENV STREAMLIT_SERVER_HEADLESS=true \
     STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
     STREAMLIT_SERVER_ENABLE_CORS=false \
     STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=true \
-    AE_LOG_FORMAT=json
+    AE_LOG_FORMAT=json \
+    AUTONOMY_ENGINE_PROJECT_DIR=/app
 
 EXPOSE 8501
 

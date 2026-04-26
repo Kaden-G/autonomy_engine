@@ -332,45 +332,93 @@ def _scaffold_project_dir(target: Path) -> None:
 # ── LLM-powered spec generation ──────────────────────────────────────────────
 
 
-def _generate_spec_suggestions(data: dict) -> dict | None:
-    """Call the LLM to auto-generate remaining spec fields from the project seed.
+class SpecSuggestionError(Exception):
+    """Raised by ``_generate_spec_suggestions_or_raise`` with a user-readable reason.
 
-    Returns a flat dict of generated fields on success, or None on any failure.
+    The dashboard catches this and surfaces it via ``st.error`` so the visitor
+    sees a real cause instead of a generic "Generation failed" message.
     """
-    try:
-        from engine.llm_provider import get_provider
 
-        template_path = get_prompts_dir() / "intake_suggest.txt"
+
+def _generate_spec_suggestions_or_raise(data: dict) -> dict:
+    """Generate spec suggestions; raise :class:`SpecSuggestionError` on failure.
+
+    Each failure path is wrapped with a human-readable reason — missing
+    template, missing API key, LLM API error, malformed response, etc. The
+    silent variant (:func:`_generate_spec_suggestions`) wraps this one for
+    CLI callers that prefer the existing ``None``-on-failure contract.
+    """
+    from engine.llm_provider import get_provider
+
+    template_path = get_prompts_dir() / "intake_suggest.txt"
+    if not template_path.exists():
+        raise SpecSuggestionError(
+            f"Prompt template not found at {template_path}. The Docker image may "
+            "have stripped templates/prompts/ from the build context."
+        )
+    try:
         prompt_template = template_path.read_text()
-        prompt = prompt_template.format(
-            name=data.get("name", ""),
-            description=data.get("description", ""),
-            domain=data.get("domain", "software"),
+    except OSError as exc:
+        raise SpecSuggestionError(f"Could not read prompt template: {exc}") from exc
+
+    prompt = prompt_template.format(
+        name=data.get("name", ""),
+        description=data.get("description", ""),
+        domain=data.get("domain", "software"),
+    )
+
+    try:
+        provider = get_provider(stage="intake")
+    except Exception as exc:
+        # Most common: API key missing in environment.
+        raise SpecSuggestionError(
+            f"Could not initialize LLM provider — is ANTHROPIC_API_KEY set in the "
+            f"deployment environment? ({type(exc).__name__}: {exc})"
+        ) from exc
+
+    try:
+        response = provider.generate(prompt)
+    except Exception as exc:
+        raise SpecSuggestionError(f"LLM API call failed: {type(exc).__name__}: {exc}") from exc
+
+    match = re.search(r"```yaml\s*\n(.*?)```", response, re.DOTALL)
+    if not match:
+        snippet = response[:200].replace("\n", " ")
+        raise SpecSuggestionError(
+            f"LLM response did not contain a ```yaml block. First 200 chars: {snippet!r}"
         )
 
-        provider = get_provider(stage="intake")
-        response = provider.generate(prompt)
-
-        # Extract YAML block from between ```yaml and ``` fences
-        match = re.search(r"```yaml\s*\n(.*?)```", response, re.DOTALL)
-        if not match:
-            print("  Warning: LLM response did not contain a valid YAML block.")
-            return None
-
+    try:
         parsed = yaml.safe_load(match.group(1))
-        if not isinstance(parsed, dict):
-            print("  Warning: parsed YAML is not a mapping.")
-            return None
+    except yaml.YAMLError as exc:
+        raise SpecSuggestionError(f"YAML parse error in LLM response: {exc}") from exc
 
-        # Validate required keys
-        for key in ("functional", "acceptance", "artifacts"):
-            if key not in parsed or not parsed[key]:
-                print(f"  Warning: generated spec missing required key '{key}'.")
-                return None
+    if not isinstance(parsed, dict):
+        raise SpecSuggestionError(f"Parsed YAML is a {type(parsed).__name__}, expected a mapping.")
 
-        return parsed
+    for key in ("functional", "acceptance", "artifacts"):
+        if key not in parsed or not parsed[key]:
+            raise SpecSuggestionError(
+                f"Generated spec is missing required key '{key}'. Got keys: {sorted(parsed.keys())}"
+            )
 
-    except Exception as exc:
+    return parsed
+
+
+def _generate_spec_suggestions(data: dict) -> dict | None:
+    """Silent variant: returns ``None`` on any failure (CLI-friendly).
+
+    The CLI's interactive flow uses this so a failure prints a one-line
+    warning and the user falls back to manual entry. The dashboard uses
+    :func:`_generate_spec_suggestions_or_raise` directly so it can show
+    the actual error to the visitor.
+    """
+    try:
+        return _generate_spec_suggestions_or_raise(data)
+    except SpecSuggestionError as exc:
+        print(f"  Warning: spec generation failed ({exc}). Continuing manually.")
+        return None
+    except Exception as exc:  # belt-and-suspenders for unexpected failure modes
         print(f"  Warning: spec generation failed ({exc}). Continuing manually.")
         return None
 

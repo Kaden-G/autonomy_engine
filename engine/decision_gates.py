@@ -26,7 +26,6 @@ from pathlib import Path
 from typing import Callable
 
 import yaml
-from engine.compat import pause_flow_run, RunInput
 
 from engine.context import get_state_dir, get_templates_dir
 from engine.tracer import get_run_id, trace
@@ -45,25 +44,6 @@ class DecisionRequired(Exception):
         self.stage = stage
         self.options = options
         super().__init__(f"Decision required at {stage}: {gate} (options: {options})")
-
-
-# ── Prefect UI input schema ─────────────────────────────────────────────────
-# DEPRECATED: Prefect orchestration path.
-# Retires 2026-05-21 (30 days from 2026-04-21). After that date, delete this
-# class and the `pause_flow_run`/`RunInput` imports at the top of this module.
-# Under LangGraph (graph/nodes.py), `interrupt()` replaces this pause mechanism.
-
-
-class DecisionInput(RunInput):
-    """Schema for human decision input via Prefect UI.
-
-    LEGACY-GATED: only instantiated by `require_decision`, which is only
-    called from `flows/autonomous_flow.py`. Under LangGraph, `RunInput` is
-    a no-op stub from `engine.compat`.
-    """
-
-    choice: str
-    rationale: str = ""
 
 
 # ── Path helpers ─────────────────────────────────────────────────────────────
@@ -104,30 +84,6 @@ def _resolve_actor(actor: str | None) -> str:
 
 
 # ── Core API ─────────────────────────────────────────────────────────────────
-
-
-def require_decision(gate: str, options: list[str]) -> DecisionInput:
-    """Pause the flow and wait for a human decision via Prefect UI.
-
-    DEPRECATED: Prefect orchestration path. Retires 2026-05-21.
-    Only called from `flows/autonomous_flow.py` — never from tasks directly.
-    Under LangGraph (graph/nodes.py), the analogous pause mechanism is
-    `langgraph.types.interrupt()`, which preserves state in the checkpoint
-    instead of requiring a Prefect UI round-trip.
-
-    Raises ``NotImplementedError`` if Prefect is not installed (via the
-    `engine.compat.pause_flow_run` stub). Returns a ``DecisionInput`` with
-    `.choice` and `.rationale` when Prefect is present.
-    """
-    description = f"**{gate}**\n\nOptions:\n"
-    for opt in options:
-        description += f"- `{opt}`\n"
-
-    result: DecisionInput = pause_flow_run(
-        wait_for_input=DecisionInput,
-        timeout=86400,
-    )
-    return result
 
 
 def save_decision(

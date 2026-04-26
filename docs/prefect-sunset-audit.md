@@ -2,8 +2,20 @@
 
 **Date:** 2026-04-21
 **Sunset target:** 2026-05-21 (30 days from audit)
+**Actual retirement:** 2026-04-25 (pulled forward 26 days)
+**Status:** ✅ Complete
 **Tracks:** P0-5, P2-6
-**Branch:** `chore/P0-5-prefect-sunset`
+
+> **Update 2026-04-25.** Retirement was pulled forward as part of the
+> deps CVE cleanup — the Prefect transitive tree (`fakeredis` →
+> `lupa`, `alembic`, `amplitude-analytics`, etc.) was the source of
+> most of the pip-audit findings, and dropping it slimmed
+> `requirements.lock` from 363 → 216 lines while resolving 9 of 10
+> CVEs. `flows/`, `tests/test_production_readiness.py`,
+> `engine/compat.py::{flow, pause_flow_run, RunInput}`, and
+> `engine/decision_gates.py::{require_decision, DecisionInput}` are
+> all gone. `engine/compat.py::task` remains as a single-symbol
+> no-op shim so `tasks/*.py` files don't need to drop the decorator.
 
 ## Context
 

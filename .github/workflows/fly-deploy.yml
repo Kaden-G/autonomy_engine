@@ -1,0 +1,39 @@
+# Deploy the dashboard image to Fly.io on every push to main.
+#
+# Without this, merging a fix to main doesn't actually update the live app —
+# someone has to remember to run `fly deploy` from their laptop. That gap is
+# how PRs #19 and #20 ended up "merged but not yet on autonomy-engine.fly.dev"
+# during back-to-back debug sessions.
+#
+# Setup (one time):
+#   1. Generate a deploy token:
+#        fly tokens create deploy -a autonomy-engine
+#   2. Add it to the repo's Actions secrets as FLY_API_TOKEN:
+#        gh secret set FLY_API_TOKEN
+#
+# The `concurrency` block serializes deploys so two quick merges don't race
+# each other; `cancel-in-progress: false` lets the in-flight deploy finish
+# (Fly machines hate being interrupted mid-rollout) before the next one starts.
+
+name: Fly Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: fly-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

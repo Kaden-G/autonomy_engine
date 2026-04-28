@@ -20,9 +20,15 @@ RUN apt-get update && \
 WORKDIR /app
 
 # --- Dependency layer (cached until lock file changes) ----------------------
+# Install strictly from the pinned lock file so the deployed image is
+# reproducible. A previous revision tacked on an unpinned `pip install streamlit
+# plotly` here, which left the install state ambiguous — both packages are
+# already pinned in requirements.txt, so the second call was a no-op at best
+# and a source of chunk-hash drift between deploys at worst (the symptom being
+# "Failed to fetch dynamically imported module" for Streamlit's lazy-loaded
+# SyntaxHighlighter chunk).
 COPY requirements.txt pyproject.toml ./
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir streamlit plotly
+RUN pip install --no-cache-dir -r requirements.txt
 
 # --- Application layer ------------------------------------------------------
 COPY . .

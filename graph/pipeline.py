@@ -377,11 +377,20 @@ if __name__ == "__main__":
 
     # Set up checkpointer based on args
     cp = None
+    cp_conn = None
     if args.checkpoint_db:
         try:
+            import sqlite3
+
             from langgraph.checkpoint.sqlite import SqliteSaver
 
-            cp = SqliteSaver.from_conn_string(args.checkpoint_db)
+            # langgraph-checkpoint-sqlite>=2.x changed `SqliteSaver.from_conn_string`
+            # to a context manager (`_GeneratorContextManager`), which `graph.compile`
+            # rejects with "Invalid checkpointer". Construct the saver directly from
+            # a sqlite3 connection — same pattern dashboard/pages/run_pipeline.py
+            # uses for the in-process resume path.
+            cp_conn = sqlite3.connect(args.checkpoint_db, check_same_thread=False)
+            cp = SqliteSaver(cp_conn)
             logger.info("Using SQLite checkpointer: %s", args.checkpoint_db)
         except ImportError:
             logger.warning(
@@ -390,11 +399,15 @@ if __name__ == "__main__":
                 "Falling back to in-memory checkpointer."
             )
 
-    result = run_pipeline(
-        project_dir=args.project_dir,
-        checkpointer=cp,
-        thread_id=args.thread_id,
-    )
+    try:
+        result = run_pipeline(
+            project_dir=args.project_dir,
+            checkpointer=cp,
+            thread_id=args.thread_id,
+        )
+    finally:
+        if cp_conn is not None:
+            cp_conn.close()
 
     # Report final status
     if result.get("error"):

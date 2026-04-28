@@ -12,8 +12,6 @@ An autonomous software build pipeline that turns a project description into work
 
 Built on [LangGraph](https://langchain-ai.github.io/langgraph/). Compatible with Claude and OpenAI.
 
-> **[Try it without an API key](https://kaden-g-solo.streamlit.app)** — hosted demo, 3 runs per session.
-
 ---
 
 ## The problem this solves

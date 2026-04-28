@@ -12,6 +12,8 @@ An autonomous software build pipeline that turns a project description into work
 
 Built on [LangGraph](https://langchain-ai.github.io/langgraph/). Compatible with Claude and OpenAI.
 
+> **[Try the live demo](https://autonomy-engine.fly.dev)** — hosted on Fly.io.
+
 ---
 
 ## The problem this solves

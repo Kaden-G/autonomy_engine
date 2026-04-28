@@ -21,10 +21,13 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-import streamlit as st
+# Imports below intentionally follow the sys.path bootstrap above — moving
+# them up would break `streamlit run dashboard/app.py` invocations where the
+# project root isn't on sys.path.
+import streamlit as st  # noqa: E402
 
-from dashboard.data_loader import find_project_dir
-from dashboard.pages import (
+from dashboard.data_loader import find_project_dir  # noqa: E402
+from dashboard.pages import (  # noqa: E402
     audit_trail,
     benchmarks,
     config_editor,
@@ -35,9 +38,9 @@ from dashboard.pages import (
     run_outputs,
     run_pipeline,
 )
-from dashboard.rate_limiter import get_remaining_runs
-from dashboard.secrets_bridge import inject_secrets
-from dashboard.theme import (
+from dashboard.rate_limiter import get_remaining_runs  # noqa: E402
+from dashboard.secrets_bridge import inject_secrets  # noqa: E402
+from dashboard.theme import (  # noqa: E402
     GLOBAL_CSS,
     MUTED,
     TEXT_MUTED,

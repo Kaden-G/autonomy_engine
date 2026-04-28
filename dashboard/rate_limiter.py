@@ -71,7 +71,7 @@ def check_rate_limit() -> bool:
             f"Demo limit reached ({max_runs} pipeline runs per session). "
             "Clone the repo and use your own API key for unlimited access.\n\n"
             "```bash\n"
-            "git clone https://github.com/kaden-g/solo.git\n"
+            "git clone https://github.com/Kaden-G/autonomy_engine.git\n"
             "cp .env.example .env  # add your key\n"
             "streamlit run dashboard/app.py\n"
             "```"

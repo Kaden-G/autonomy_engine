@@ -11,6 +11,16 @@ Or point it at a specific project:
     AUTONOMY_ENGINE_PROJECT_DIR=/path/to/project streamlit run dashboard/app.py
 """
 
+import sys
+from pathlib import Path
+
+# Streamlit Cloud runs `streamlit run dashboard/app.py`, which only puts the
+# script's directory on sys.path — not the project root. Without this, the
+# absolute `dashboard.*` imports below fail with ModuleNotFoundError.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 import streamlit as st
 
 from dashboard.data_loader import find_project_dir

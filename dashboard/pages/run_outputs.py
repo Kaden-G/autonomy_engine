@@ -271,17 +271,18 @@ def _render_intake_only(project_dir):
         _render_stage_section(project_dir, state_dir, None, "intake", stage, None)
 
 
-@st.cache_data(show_spinner=False)
-def _cached_run_zip(project_dir_str: str, run_id: str) -> bytes:
-    # Cache key intentionally uses str (Path is unhashable across Streamlit
-    # reruns in some versions). Re-run via "Clear cache" if a run is rebuilt.
-    return build_run_zip(Path(project_dir_str), run_id)
-
-
 def _render_download_button(project_dir: Path, run_id: str) -> None:
-    """Render the bundle-download button for the selected run."""
+    """Render the bundle-download button for the selected run.
+
+    The zip is built fresh on every render (no @st.cache_data). Streamlit's
+    MediaFileHandler ties the download URL to a per-session registration of
+    the bytes; caching across sessions causes the URL to 404 once the
+    original session is cleaned up (laptop sleep, network blip, tab close).
+    Building fresh keeps the URL valid for the lifetime of the current
+    rerun, which is all we need.
+    """
     try:
-        zip_bytes = _cached_run_zip(str(project_dir), run_id)
+        zip_bytes = build_run_zip(project_dir, run_id)
     except Exception as e:  # noqa: BLE001 — surface any zip error to the user
         st.error(f"Could not build download bundle: {e}")
         return

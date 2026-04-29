@@ -68,7 +68,7 @@ class TestBootstrapNoLegacyTrace:
         """bootstrap_project() must not create state/TRACE.json."""
         _create_intake_artifacts(tmp_path)
         init_run()
-        bootstrap_project.fn()
+        bootstrap_project()
         assert not (tmp_path / "state" / "TRACE.json").exists()
 
     def test_existing_trace_json_not_touched(self, tmp_path):
@@ -77,7 +77,7 @@ class TestBootstrapNoLegacyTrace:
         legacy = tmp_path / "state" / "TRACE.json"
         legacy.write_text("[]\n")
         init_run()
-        bootstrap_project.fn()
+        bootstrap_project()
         # File untouched — still the original content
         assert legacy.read_text() == "[]\n"
 
@@ -96,21 +96,21 @@ class TestRunScopedDirectories:
         """bootstrap must create state/runs/<run_id>/evidence/."""
         _create_intake_artifacts(tmp_path)
         run_id = init_run()
-        bootstrap_project.fn()
+        bootstrap_project()
         assert (tmp_path / "state" / "runs" / run_id / "evidence").is_dir()
 
     def test_bootstrap_creates_decisions_dir(self, tmp_path):
         """bootstrap must create state/runs/<run_id>/decisions/."""
         _create_intake_artifacts(tmp_path)
         run_id = init_run()
-        bootstrap_project.fn()
+        bootstrap_project()
         assert (tmp_path / "state" / "runs" / run_id / "decisions").is_dir()
 
     def test_bootstrap_creates_global_output_dirs(self, tmp_path):
         """bootstrap must scaffold designs/, implementations/, tests/, build/."""
         _create_intake_artifacts(tmp_path)
         init_run()
-        bootstrap_project.fn()
+        bootstrap_project()
         state_dir = tmp_path / "state"
         for subdir in ("designs", "implementations", "tests", "build"):
             assert (state_dir / subdir).is_dir()
@@ -119,7 +119,7 @@ class TestRunScopedDirectories:
         """bootstrap must fail if init_run() was not called first."""
         _create_intake_artifacts(tmp_path)
         with pytest.raises(RuntimeError, match="No active run"):
-            bootstrap_project.fn()
+            bootstrap_project()
 
 
 # ── Bootstrap trace entry ────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ class TestBootstrapTrace:
         """bootstrap must write a trace entry to the run's trace.jsonl."""
         _create_intake_artifacts(tmp_path)
         run_id = init_run()
-        bootstrap_project.fn()
+        bootstrap_project()
         trace_file = tmp_path / "state" / "runs" / run_id / "trace.jsonl"
         assert trace_file.exists()
         entries = [json.loads(line) for line in trace_file.read_text().strip().splitlines()]
@@ -143,7 +143,7 @@ class TestBootstrapTrace:
         """The bootstrap trace entry must have a valid entry_hash."""
         _create_intake_artifacts(tmp_path)
         run_id = init_run()
-        bootstrap_project.fn()
+        bootstrap_project()
         trace_file = tmp_path / "state" / "runs" / run_id / "trace.jsonl"
         entry = json.loads(trace_file.read_text().strip())
         assert "entry_hash" in entry
@@ -153,7 +153,7 @@ class TestBootstrapTrace:
         """Bootstrap trace must list the intake files that are actually present."""
         _create_intake_artifacts(tmp_path)
         run_id = init_run()
-        bootstrap_project.fn()
+        bootstrap_project()
         trace_file = tmp_path / "state" / "runs" / run_id / "trace.jsonl"
         entry = json.loads(trace_file.read_text().strip())
         # All required files should be listed as inputs
@@ -164,7 +164,7 @@ class TestBootstrapTrace:
         """Bootstrap trace outputs should be empty when no config.yml exists."""
         _create_intake_artifacts(tmp_path)
         run_id = init_run()
-        bootstrap_project.fn()
+        bootstrap_project()
         trace_file = tmp_path / "state" / "runs" / run_id / "trace.jsonl"
         entry = json.loads(trace_file.read_text().strip())
         assert entry["outputs"] == {}
@@ -174,7 +174,7 @@ class TestBootstrapTrace:
         _create_intake_artifacts(tmp_path)
         (tmp_path / "config.yml").write_text("llm:\n  provider: test\n")
         run_id = init_run()
-        bootstrap_project.fn()
+        bootstrap_project()
         trace_file = tmp_path / "state" / "runs" / run_id / "trace.jsonl"
         entry = json.loads(trace_file.read_text().strip())
         output_keys = list(entry["outputs"].keys())

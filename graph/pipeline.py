@@ -1,7 +1,7 @@
 """Pipeline graph definition — the orchestration backbone.
 
-This module builds the LangGraph StateGraph that replaces Prefect's
-autonomous_build flow. The graph defines:
+This module builds the LangGraph StateGraph that runs the autonomous build
+flow. The graph defines:
     - Linear progression: init → bootstrap → design → implement → extract → test → verify → complete
     - Conditional edges: test failures can route back to implement (retry loop)
     - Error short-circuits: any stage failure routes to an error terminal
@@ -111,9 +111,9 @@ def route_after_test(
     2. Tests failed + retries remaining → implement (retry loop)
     3. Tests failed + no retries (or aborted) → END
 
-    The retry loop is the key architectural advantage of using a graph.
-    In the Prefect flow, retrying required re-running the entire pipeline
-    or custom retry logic. Here, it's just an edge.
+    The retry loop is the key architectural advantage of using a graph —
+    re-running implement→test is just a conditional edge, not a re-execution
+    of the whole pipeline.
     """
     result = state.get("stage_results", {}).get("test")
     if result is None:
@@ -232,8 +232,7 @@ def run_pipeline(
 ) -> PipelineState:
     """Build and run the pipeline graph.
 
-    This is the primary entry point — the LangGraph equivalent of
-    autonomous_build() in the Prefect flow.
+    This is the primary entry point for the autonomous build flow.
 
     Args:
         project_dir: Path to project directory (None = engine root).

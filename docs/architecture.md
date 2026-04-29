@@ -61,7 +61,7 @@ The **extract** step parses the AI's output for code blocks, then writes each fi
 
 ## Orchestration: LangGraph
 
-The pipeline runs on [LangGraph](https://langchain-ai.github.io/langgraph/) — a stateful graph framework. For the Prefect → LangGraph migration story (why, what changed, sunset timeline), see [docs/migration-langgraph.md](migration-langgraph.md).
+The pipeline runs on [LangGraph](https://langchain-ai.github.io/langgraph/) — a stateful graph framework. For the migration history (Prefect → LangGraph in v2.0), see [docs/migration-langgraph.md](migration-langgraph.md).
 
 ### Pipeline graph
 
@@ -187,7 +187,6 @@ engine/               Core engine modules
   report.py           Audit bundle exporter (compressed archive with full run data)
   prompt_guard.py     OWASP LLM01 defenses — sanitize, canary, pattern detection
   verify_trace.py     CLI for HMAC chain integrity verification
-  compat.py           Prefect-shim (retires 2026-05-21 with flows/)
   notifier.py         Notification stub — logs-only by default; intentional
                       extension point (swap in Slack/email/PagerDuty)
   design_contract.py  Design contract schema, validation (15+ checks), extraction
@@ -198,12 +197,11 @@ engine/               Core engine modules
   usage_tracker.py    Post-run actual vs. projected token usage comparison
   cache.py            Deterministic AI response caching with TTL eviction
 
-graph/                LangGraph orchestration (v2.0 — primary entry point)
+graph/                LangGraph orchestration
   pipeline.py         StateGraph, conditional edges, retry loop, checkpointing
   nodes.py            Thin adapters over tasks/*.py (one node per stage)
   state.py            PipelineState TypedDict — the shape of run state
 
-flows/                Prefect flow definition (legacy v1.x — retires 2026-05-21)
 tasks/                Individual pipeline stages (one file per stage)
   bootstrap.py        Input validation and audit log initialization
   design.py           Architecture and design contract generation (AI-powered)

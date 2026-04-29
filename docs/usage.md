@@ -129,24 +129,6 @@ python graph/pipeline.py --checkpoint-db state/checkpoints.sqlite
 
 The engine will refuse to start if intake has not been completed. Gate approvals surface inline via LangGraph's `interrupt()` (no external UI required) — or use the **Run Pipeline** page in the dashboard for tier selection, cost estimates, and live monitoring.
 
-<details>
-<summary><b>Legacy (v1.x — Prefect)</b>: still works if you install with <code>pip install "autonomy-engine[prefect]"</code>. <b>Retires 2026-05-21.</b></summary>
-
-```bash
-# Start Prefect server (separate terminal)
-prefect server start
-
-# Run the pipeline
-python flows/autonomous_flow.py
-
-# Run against an external project directory
-python flows/autonomous_flow.py --project-dir ~/projects/solo1
-```
-
-The Prefect UI is available at `http://localhost:4200` for monitoring and gate approvals. New projects should use `graph/pipeline.py`. See [docs/migration-langgraph.md](migration-langgraph.md) for the full retirement plan.
-
-</details>
-
 ## Output
 
 After a successful run, the generated project files appear in a sibling directory:

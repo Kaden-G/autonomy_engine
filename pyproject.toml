@@ -8,7 +8,7 @@ version = "2.0.0"
 description = "LangGraph-orchestrated autonomous build engine with human-in-the-loop decision gates"
 requires-python = ">=3.10"
 dependencies = [
-    # ── Orchestration (LangGraph replaces Prefect as primary orchestrator) ──
+    # ── Orchestration ──
     "langgraph>=1.0,<2",
     # ── LLM providers ──
     "anthropic>=0.87,<2",
@@ -46,8 +46,6 @@ target-version = "py310"
 "intake/intake.py" = ["E402"]
 "bench/benchmark_runs.py" = ["E402"]
 "engine/llm_provider.py" = ["E402"]
-# Prefect log-level suppression must run before engine.* imports
-"graph/nodes.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -74,7 +74,7 @@ class TestAutoModeSkipsLlmOnPass:
         ):
             from tasks.verify import verify_system
 
-            verify_system.fn()
+            verify_system()
 
         provider.generate.assert_not_called()
 
@@ -106,7 +106,7 @@ class TestAutoModeSkipsLlmOnFail:
         ):
             from tasks.verify import verify_system
 
-            verify_system.fn()
+            verify_system()
 
         provider.generate.assert_not_called()
 
@@ -145,7 +145,7 @@ class TestAlwaysLlmCallsModel:
         ):
             from tasks.verify import verify_system
 
-            verify_system.fn()
+            verify_system()
 
         provider.generate.assert_called_once()
 
@@ -166,7 +166,7 @@ class TestTraceRecordsVerifyDecision:
         ):
             from tasks.verify import verify_system
 
-            verify_system.fn()
+            verify_system()
 
         # Read trace and check extra fields
         run_id = tracer.get_run_id()

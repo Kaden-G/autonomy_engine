@@ -14,11 +14,6 @@
 #   - Security scans don't need multiple Python versions.
 #   - Test matrix covers compatibility; the others are version-independent.
 #   - Import check catches missing deps that unit tests might not exercise.
-#
-# Note: Prefect orchestration was retired on 2026-04-25 (ahead of the
-# 2026-05-21 sunset target) as part of the deps CVE cleanup. The
-# tests/test_production_readiness.py module that exercised the Prefect
-# flow has been removed; this comment is a tombstone for git archaeology.
 # --------------------------------------------------------------------------
 
 name: CI

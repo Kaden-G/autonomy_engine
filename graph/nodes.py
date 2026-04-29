@@ -22,10 +22,10 @@ Human-in-the-loop design (OWASP LLM Top 10: LLM09 - Overreliance):
     humans review architecture decisions, triage test failures, and approve/reject
     verification results before the pipeline continues.
 
-    The interrupt() pattern is cleaner than Prefect's pause_flow_run because:
-    - State is preserved in the checkpoint (no re-execution needed)
-    - The decision context is part of the graph state (inspectable, replayable)
-    - Resume is a graph.invoke() with the decision injected — no Prefect UI required
+    The interrupt() pattern keeps state in the checkpoint (no re-execution
+    needed), exposes the decision context through the graph state
+    (inspectable, replayable), and resumes via graph.invoke() with the
+    decision injected.
 """
 
 from __future__ import annotations
@@ -38,12 +38,6 @@ from pathlib import Path
 from typing import Any
 
 from langgraph.types import interrupt
-
-# Suppress noisy Prefect task-engine logs when Prefect is installed.
-# Under LangGraph, DecisionRequired exceptions are expected control flow,
-# but Prefect's @task wrapper logs them as "Task run failed" at ERROR level.
-logging.getLogger("prefect.task_runs").setLevel(logging.CRITICAL)
-logging.getLogger("prefect").setLevel(logging.WARNING)
 
 from engine.cache import evict_stale_llm_cache
 from engine.context import get_state_dir, init as init_context
@@ -313,9 +307,8 @@ REQUIRED_INPUTS = [
 def init_node(state: PipelineState) -> dict[str, Any]:
     """Initialize the pipeline: set up context, create run, load config.
 
-    This is the graph's entry point. It replaces the top of autonomous_build()
-    in the Prefect flow. Everything that needs to happen exactly once before
-    any stage runs goes here.
+    This is the graph's entry point. Everything that needs to happen exactly
+    once before any stage runs goes here.
 
     Note: Signal handlers are installed here because this is the first node
     to execute. If the process dies during any subsequent node, the shutdown
@@ -327,7 +320,7 @@ def init_node(state: PipelineState) -> dict[str, Any]:
     # Initialize project context (sets thread-local project directory)
     init_context(state.get("project_dir"))
 
-    # Verify intake completion — hard gate, same as Prefect flow
+    # Verify intake completion — hard gate
     state_dir = get_state_dir()
     missing = [f for f in REQUIRED_INPUTS if not (state_dir / f).exists()]
     if missing:

@@ -14,7 +14,7 @@
 
 This project was built with Claude as a development partner — architecture decisions, security model, code review, and implementation were all done in collaboration with AI. That's a deliberate choice, not an asterisk.
 
-The engineering value of this project lives in the decisions: why HMAC-SHA256 over plain hash chains, why contracts instead of freeform prompts, why LangGraph's StateGraph over a hand-rolled state machine (and why it replaced Prefect in v2.0), where to draw the threat model boundary and document what's explicitly out of scope. Those decisions are the work. The ability to execute on them efficiently using AI tooling is the skill, not the shortcut.
+The engineering value of this project lives in the decisions: why HMAC-SHA256 over plain hash chains, why contracts instead of freeform prompts, why LangGraph's StateGraph over a hand-rolled state machine, where to draw the threat model boundary and document what's explicitly out of scope. Those decisions are the work. The ability to execute on them efficiently using AI tooling is the skill, not the shortcut.
 
 This is also a project *about* AI-supervised pipelines — building it with AI-assisted development is practicing what it preaches.
 
@@ -35,7 +35,7 @@ Three independent tools provide ongoing due-diligence on the engine's own codeba
 
 ### Test coverage (pytest-cov)
 
-The engine has 661 automated tests covering the core modules. Coverage on engine/ + graph/ + tasks/ is **67%** on the testable surface. Modules with 0% coverage (cost_estimator, usage_tracker, notifier) depend on the Prefect runtime or pipeline integration, which is only available when running the full pipeline — they are fully exercised during real pipeline runs but can't be unit-tested in isolation.
+The engine has 661 automated tests covering the core modules. Coverage on engine/ + graph/ + tasks/ is **67%** on the testable surface. Modules with 0% coverage (cost_estimator, usage_tracker, notifier) depend on full pipeline integration — they are exercised during real pipeline runs but can't be unit-tested in isolation.
 
 High-coverage modules (90%+): cache, contract_checker, design_contract, evidence, extraction, log_config, model_registry, prompt_guard, sandbox, spec_normalizer, state_loader, tier_context, tracer, graph.state, tasks.manifest_schema.
 
@@ -61,7 +61,6 @@ pytest -q                                        # full suite (~2.5 min)
 pytest -x                                        # stop on first failure
 pytest --cov=engine --cov=graph --cov=tasks      # with coverage
 pytest tests/test_prompt_guard.py -v             # a single file
-RUN_DEPRECATED_TESTS=1 pytest tests/             # include Prefect-flow tests (retire 2026-05-21)
 ```
 
 Lint + format:

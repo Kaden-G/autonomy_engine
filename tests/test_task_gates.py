@@ -72,7 +72,7 @@ class TestTestSystemGate:
         from tasks.test import test_system
 
         with pytest.raises(DecisionRequired, match="test_failure_triage"):
-            test_system.fn()
+            test_system()
 
     @patch("tasks.test.trace")
     @patch("tasks.test.save_state_file")
@@ -100,7 +100,7 @@ class TestTestSystemGate:
 
         from tasks.test import test_system
 
-        test_system.fn()  # should not raise
+        test_system()  # should not raise
         assert mock_save_state.called, "state file should be written on clean pass"
 
     @patch("tasks.test.trace")
@@ -130,7 +130,7 @@ class TestTestSystemGate:
 
         from tasks.test import test_system
 
-        test_system.fn()  # should not raise — decision exists
+        test_system()  # should not raise — decision exists
         assert mock_save_state.called, "state file should be written when bypassing via decision"
 
     def test_abort_decision_raises_runtime_error(self):
@@ -141,7 +141,7 @@ class TestTestSystemGate:
         from tasks.test import test_system
 
         with pytest.raises(RuntimeError, match="abort"):
-            test_system.fn()
+            test_system()
 
 
 # ── verify_system gate triggers ────────────────────────────────────────────
@@ -187,7 +187,7 @@ class TestVerifySystemGate:
         from tasks.verify import verify_system
 
         with pytest.raises(DecisionRequired, match="verification_review"):
-            verify_system.fn()
+            verify_system()
 
     @patch("tasks.verify.trace")
     @patch("tasks.verify.save_state_file")
@@ -224,7 +224,7 @@ class TestVerifySystemGate:
 
         from tasks.verify import verify_system
 
-        verify_system.fn()  # should not raise
+        verify_system()  # should not raise
         assert provider.generate.called, "LLM provider should be invoked for verify"
         assert mock_save_state.called, "VERIFICATION.md should be written on approved verdict"
 
@@ -263,7 +263,7 @@ class TestVerifySystemGate:
 
         from tasks.verify import verify_system
 
-        verify_system.fn()  # should not raise
+        verify_system()  # should not raise
         assert mock_save_state.called, "VERIFICATION.md should be written for approved-with-caveats"
 
     def test_reject_decision_raises_runtime_error(self):
@@ -274,4 +274,4 @@ class TestVerifySystemGate:
         from tasks.verify import verify_system
 
         with pytest.raises(RuntimeError, match="reject"):
-            verify_system.fn()
+            verify_system()

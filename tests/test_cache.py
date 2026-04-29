@@ -85,13 +85,13 @@ class TestDesignTaskUsesCache:
         with patch("tasks.design.get_provider", return_value=mock_provider):
             from tasks.design import design_system
 
-            design_system.fn()
+            design_system()
 
             # Second call — should hit cache
             # Need a new run for a fresh trace chain
             tracer._prev_hash = GENESIS_HASH
             tracer._seq = 0
             init_run()
-            design_system.fn()
+            design_system()
 
         assert mock_provider.generate.call_count == 1

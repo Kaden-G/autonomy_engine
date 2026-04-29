@@ -1,7 +1,6 @@
 """LangGraph-based orchestration for the Autonomy Engine.
 
-This package replaces Prefect's flow/task model with LangGraph's StateGraph,
-providing:
+This package implements the pipeline as a LangGraph StateGraph, providing:
     - Typed pipeline state with formal transitions
     - Built-in checkpointing (resume from failure without re-running LLM calls)
     - Native human-in-the-loop via interrupt()
@@ -9,9 +8,9 @@ providing:
     - Parallel node execution for independent checks
 
 Architecture decision:
-    We chose LangGraph over Prefect for orchestration because:
+    LangGraph was chosen for orchestration because:
     1. Checkpointing saves LLM costs on pipeline failures ($1-8/run)
-    2. interrupt() is a cleaner HITL primitive than Prefect's pause_flow_run
+    2. interrupt() is a clean HITL primitive
     3. StateGraph makes the pipeline's control flow explicit and testable
     4. Graph-native retry loops (implement→test→re-implement) are first-class
 

@@ -84,7 +84,7 @@ class TestExtractOutputResolution:
 
         from tasks.extract import extract_project
 
-        extract_project.fn()
+        extract_project()
 
         # Output should be at project_dir.parent / slug, which is tmp_path / "my-test-app"
         output_dir = tmp_path / "my-test-app"
@@ -110,12 +110,12 @@ class TestExtractOutputResolution:
         init_run()
         from tasks.extract import extract_project
 
-        extract_project.fn()
+        extract_project()
 
         # Extract for project B
         self._setup_for_extract(proj_b, "Beta App")
         init_run()
-        extract_project.fn()
+        extract_project()
 
         assert (tmp_path / "alpha-app").is_dir()
         assert (tmp_path / "beta-app").is_dir()

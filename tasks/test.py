@@ -14,7 +14,6 @@ import re
 from pathlib import Path
 
 import yaml
-from engine.compat import task
 
 from engine.context import get_project_dir, get_state_dir
 from engine.contract_checker import check_contract_compliance
@@ -171,7 +170,6 @@ def _has_failures(evidence: list[dict]) -> bool:
     return any(r["exit_code"] != 0 for r in evidence if r.get("name") != "no_checks_configured")
 
 
-@task(name="test")
 def test_system() -> None:
     """Run configured checks against the extracted project, capture evidence."""
     # Decision guard: if a previous triage decision was "abort", stop immediately

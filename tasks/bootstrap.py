@@ -5,7 +5,6 @@ exist, creates the run-specific directory structure, and records the first entry
 the audit log.  If any inputs are missing, the pipeline stops here with a clear error.
 """
 
-from engine.compat import task
 
 from engine.context import get_state_dir
 from engine.tracer import get_run_id, trace
@@ -19,7 +18,6 @@ REQUIRED_FILES = [
 ]
 
 
-@task(name="bootstrap")
 def bootstrap_project() -> None:
     """Verify all intake artifacts are present, scaffold directories, log bootstrap."""
     state_dir = get_state_dir()

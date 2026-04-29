@@ -18,7 +18,6 @@ from pathlib import Path
 
 import yaml
 from pydantic import ValidationError
-from engine.compat import task
 
 from engine.context import get_project_dir
 from engine.state_loader import load_state_file, save_state_file
@@ -272,7 +271,6 @@ def _sanitize_requirements(project_dir: Path) -> None:
     req_path.write_text("\n".join(sanitized) + "\n")
 
 
-@task(name="extract")
 def extract_project() -> None:
     """Load FILE_MANIFEST.json, validate schema, write files to project folder."""
     # Load manifest JSON

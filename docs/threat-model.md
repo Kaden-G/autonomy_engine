@@ -16,7 +16,6 @@ The engine treats AI-generated code as **untrusted output in a supervised pipeli
 - [API key handling](#api-key-handling)
 - [Sharing the project safely](#sharing-the-project-safely)
 - [Audit trail](#audit-trail) (details in [docs/audit-trail.md](audit-trail.md))
-- Historical POAMs: see also [docs/prefect-sunset-audit.md](prefect-sunset-audit.md)
 
 ---
 

@@ -17,7 +17,6 @@ import logging
 import re
 from typing import Literal
 
-from engine.compat import task
 
 from engine.cache import build_cache_key, cache_lookup, cache_save, hash_content, hash_params
 from engine.context import get_prompts_dir
@@ -835,7 +834,6 @@ def _build_canonical_schema_from_contract(contract: DesignContract) -> str:
     return "\n\n".join(parts)
 
 
-@task(name="implement")
 def implement_system() -> None:
     """Read architecture from state/designs/, generate implementation via LLM.
 

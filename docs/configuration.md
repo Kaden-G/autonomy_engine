@@ -25,7 +25,6 @@
 | `ANTHROPIC_API_KEY` | *(required)* | Claude API key (loaded from `.env`) |
 | `OPENAI_API_KEY` | *(optional)* | OpenAI API key (loaded from `.env`) |
 | `AUTONOMY_ENGINE_PROJECT_DIR` | *(unset — uses CWD)* | Override the project dir the engine and dashboard read from |
-| `RUN_DEPRECATED_TESTS` | *(unset — off)* | Set to `1` to include Prefect-flow tests that retire 2026-05-21 |
 
 ## config.yml — runtime settings
 

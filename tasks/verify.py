@@ -12,7 +12,6 @@ May trigger a decision gate if the verdict is "reject" or "conditional accept."
 """
 
 import yaml
-from engine.compat import task
 
 from engine.cache import build_cache_key, cache_lookup, cache_save, hash_content, hash_params
 from engine.context import get_config_path, get_prompts_dir
@@ -239,7 +238,6 @@ def _build_deterministic_verification(evidence: list[dict], passed: bool) -> str
     return "\n".join(lines)
 
 
-@task(name="verify")
 def verify_system() -> None:
     """Load execution evidence, assess against acceptance criteria."""
     # Decision guard

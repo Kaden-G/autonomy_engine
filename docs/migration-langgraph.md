@@ -1,26 +1,43 @@
-# LangGraph Migration
+# Migration history: Prefect → LangGraph
+
+In v2.0, the pipeline orchestration was migrated from Prefect to
+[LangGraph](https://langchain-ai.github.io/langgraph/). This document records
+what changed, why, and how the migration was structured. The Prefect entry
+point and compatibility shims have since been fully removed; LangGraph is the
+only orchestrator in the codebase.
 
 ## Contents
 
-- [Why LangGraph over Prefect](#why-langgraph-over-prefect)
+- [Why LangGraph](#why-langgraph)
 - [What changed vs. what stayed](#what-changed-vs-what-stayed)
-- [Running with LangGraph](#running-with-langgraph)
-- [Retired features / Prefect sunset](#retired-features--prefect-sunset)
-- [Compat shim rationale](#compat-shim-rationale)
+- [Migration structure](#migration-structure)
 
 ---
 
-## Why LangGraph over Prefect
+## Why LangGraph
 
-Version 2.0 migrates the pipeline orchestration from Prefect to [LangGraph](https://langchain-ai.github.io/langgraph/), a stateful graph framework for building agent workflows. The engine modules, state directory structure, audit trail, and dashboard are unchanged — only the orchestration layer was replaced.
+The original Prefect-based flow was a linear sequence of `@task`-decorated
+functions with `pause_flow_run()` for human-in-the-loop gates. It worked, but
+had three pain points that a graph-based orchestrator solves naturally:
 
-The original Prefect-based flow was a linear sequence of `@task`-decorated functions with `pause_flow_run()` for human-in-the-loop gates. It worked, but had three pain points that a graph-based orchestrator solves naturally:
+**Checkpoint-based resume.** If the pipeline failed at the test stage, Prefect
+re-ran from stage 1 — re-calling the LLM for design and implementation,
+burning $1-8 in API costs per re-run. LangGraph checkpoints state at every
+node boundary, so a failed run resumes from the last successful stage. For a
+pipeline that makes expensive LLM calls, this was the performance metric that
+mattered most.
 
-**Checkpoint-based resume.** If the pipeline fails at the test stage, Prefect re-runs from stage 1 — re-calling the LLM for design and implementation, burning $1-8 in API costs per re-run. LangGraph checkpoints state at every node boundary, so a failed run resumes from the last successful stage. For a pipeline that makes expensive LLM calls, this is the performance metric that matters most.
+**Graph-native retry loops.** When tests fail, the ideal behavior is
+"re-implement with the test failures as context, then re-test." In a linear
+flow, that required custom retry logic or manual re-runs. In a graph, it's a
+conditional edge from `test` back to `implement`, bounded by a configurable
+retry budget. The graph makes this control flow explicit and testable.
 
-**Graph-native retry loops.** When tests fail, the ideal behavior is "re-implement with the test failures as context, then re-test." In a linear flow, that requires custom retry logic or manual re-runs. In a graph, it's a conditional edge from `test` back to `implement`, bounded by a configurable retry budget. The graph makes this control flow explicit and testable.
-
-**Cleaner human-in-the-loop.** Prefect's `pause_flow_run()` requires the Prefect UI/API for decision input. LangGraph's `interrupt()` pauses the graph, serializes state to the checkpoint, and resumes with the decision injected via `Command(resume=...)`. No external UI dependency — the decision can come from a CLI, API, or dashboard.
+**Cleaner human-in-the-loop.** Prefect's `pause_flow_run()` required the
+Prefect UI/API for decision input. LangGraph's `interrupt()` pauses the graph,
+serializes state to the checkpoint, and resumes with the decision injected
+via `Command(resume=...)`. No external UI dependency — the decision can come
+from a CLI, API, or dashboard.
 
 ## What changed vs. what stayed
 
@@ -36,41 +53,15 @@ The original Prefect-based flow was a linear sequence of `@task`-decorated funct
 | Dashboard | Streamlit reading from `state/` | **Unchanged** — reads same artifacts |
 | LLM providers | `engine/llm_provider.py` (Claude + OpenAI) | **Unchanged** — no LangChain wrappers added |
 
-The migration was designed as an adapter layer: `graph/nodes.py` wraps the existing `tasks/*.py` functions, translating between LangGraph's state-passing model and the tasks' file-based I/O. The tasks don't know LangGraph exists. This means the existing engine tests pass without modification.
+## Migration structure
 
-## Running with LangGraph
+The migration was designed as an adapter layer: `graph/nodes.py` wraps the
+existing `tasks/*.py` functions, translating between LangGraph's state-passing
+model and the tasks' file-based I/O. The tasks didn't know LangGraph existed.
+This meant the existing engine tests passed without modification.
 
-```bash
-# New entry point (LangGraph orchestration)
-python graph/pipeline.py
-
-# With checkpoint persistence (resume on failure)
-python graph/pipeline.py --checkpoint-db state/checkpoints.sqlite
-
-# Resume an interrupted run
-python graph/pipeline.py --thread-id <thread-id> --checkpoint-db state/checkpoints.sqlite
-
-# Legacy entry point (retires 2026-05-21)
-# Requires: pip install "autonomy-engine[prefect]"
-python flows/autonomous_flow.py
-```
-
-## Retired features / Prefect sunset
-
-**v1.x Prefect flows retire 2026-05-21.** Use `graph/pipeline.py` (LangGraph) going forward.
-
-The `flows/autonomous_flow.py` entry point, the `@flow` decorator in `engine/compat.py`, and the `pause_flow_run` / `RunInput` / `require_decision` path in `engine/decision_gates.py` all sunset on 2026-05-21 (30 days from 2026-04-21). Until then, they remain callable if Prefect is installed (`pip install "autonomy-engine[prefect]"`), with banners on each deprecated symbol.
-
-Tests that exercise only the Prefect flow (`tests/test_production_readiness.py`'s `TestGracefulShutdown` and `TestConfigLoading` classes) are gated behind `RUN_DEPRECATED_TESTS=1` and skipped by default in CI. `TestStructuredLogging` is NOT gated — it tests `engine.log_config`, which is orchestrator-agnostic and STILL-ACTIVE.
-
-Full retirement plan: [docs/prefect-sunset-audit.md](prefect-sunset-audit.md).
-
-## Compat shim rationale
-
-`engine/compat.py` is a transitional module. It provides:
-
-- No-op `@task` / `@flow` decorators when Prefect is not installed — so `tasks/*.py` continue to use the `@task(name="…")` decorator in both modes without conditional imports.
-- `pause_flow_run` stub that raises `NotImplementedError` when invoked without Prefect — LangGraph mode should never reach this path; if it does, the error is loud.
-- `RunInput` stub class so `engine/decision_gates.py::DecisionInput(RunInput)` still parses.
-
-There is **no module-level `DeprecationWarning`** on import: the `@task` decorator is still actively used by every task file under LangGraph, so firing a warning on import would be noise, not signal. The sunset signals are: the banner on `flows/autonomous_flow.py`, the symbol-level banners on `DecisionInput` and `require_decision`, the `NotImplementedError` in `pause_flow_run`, and this doc.
+During the transition, a no-op `@task` shim in `engine/compat.py` kept the
+`tasks/*.py` decorators valid while Prefect was a coexisting installation.
+Once Prefect was retired, both the shim and the decorators were removed in a
+single cleanup pass — leaving the task functions as plain Python callables
+invoked by the LangGraph node adapters.

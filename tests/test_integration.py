@@ -83,7 +83,7 @@ class TestExtractEvidenceVerifyPipeline:
 
         # ── Step 1: Extract ──────────────────────────────────────────────
         # This calls the real extract task (no mocking)
-        extract_project.fn()
+        extract_project()
 
         # Verify files were extracted to the sibling directory
         output_dir = tmp_path / "integration-test-app"

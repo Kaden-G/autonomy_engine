@@ -66,7 +66,7 @@ Create a project, pick a tier, launch a build. More options (local install, CLI-
 | Env vars, `config.yml`, `models.yml`, `DECISION_GATES.yml`, efficiency, resilience | [docs/configuration.md](docs/configuration.md) |
 | Security model, prompt-injection defense (OWASP LLM01), POAMs, framework mappings | [docs/threat-model.md](docs/threat-model.md) |
 | HMAC chain, `verify_trace` CLI, CI enforcement, key management | [docs/audit-trail.md](docs/audit-trail.md) |
-| Prefect → LangGraph migration, compat shim, retired-features / sunset plan | [docs/migration-langgraph.md](docs/migration-langgraph.md) |
+| Migration history (Prefect → LangGraph in v2.0) | [docs/migration-langgraph.md](docs/migration-langgraph.md) |
 | Setup, QA, test suite, filing a change | [docs/contributing.md](docs/contributing.md) |
 
 ## Security & responsible disclosure

@@ -14,7 +14,6 @@ before proceeding to code generation.
 
 import logging
 
-from engine.compat import task
 
 from engine.cache import build_cache_key, cache_lookup, cache_save, hash_content, hash_params
 from engine.context import get_prompts_dir
@@ -33,7 +32,6 @@ from engine.tracer import hash_prompt, trace
 logger = logging.getLogger(__name__)
 
 
-@task(name="design")
 def design_system() -> None:
     """Read requirements from state/inputs/, generate architecture via LLM."""
     requirements = load_state_file("inputs/REQUIREMENTS.md")

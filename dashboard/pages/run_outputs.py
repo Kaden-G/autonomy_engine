@@ -19,6 +19,7 @@ from dashboard.data_loader import (
     list_runs,
     load_evidence,
 )
+from dashboard.run_export import build_run_zip
 from dashboard.theme import (
     BG_SURFACE,
     BORDER,
@@ -238,6 +239,8 @@ def render(project_dir):
         label_visibility="visible",
     )
 
+    _render_download_button(project_dir, selected_run)
+
     st.divider()
 
     # ── Load run-level data ────────────────────────────────────────────────
@@ -266,6 +269,31 @@ def _render_intake_only(project_dir):
     if any(intake_status.values()):
         st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
         _render_stage_section(project_dir, state_dir, None, "intake", stage, None)
+
+
+@st.cache_data(show_spinner=False)
+def _cached_run_zip(project_dir_str: str, run_id: str) -> bytes:
+    # Cache key intentionally uses str (Path is unhashable across Streamlit
+    # reruns in some versions). Re-run via "Clear cache" if a run is rebuilt.
+    return build_run_zip(Path(project_dir_str), run_id)
+
+
+def _render_download_button(project_dir: Path, run_id: str) -> None:
+    """Render the bundle-download button for the selected run."""
+    try:
+        zip_bytes = _cached_run_zip(str(project_dir), run_id)
+    except Exception as e:  # noqa: BLE001 — surface any zip error to the user
+        st.error(f"Could not build download bundle: {e}")
+        return
+
+    st.download_button(
+        label=f"📦 Download project bundle  ·  {len(zip_bytes) / 1024:.0f} KB",
+        data=zip_bytes,
+        file_name=f"{project_dir.name}_{run_id}.zip",
+        mime="application/zip",
+        help="Generated code (code/) plus build receipts (_receipts/) — "
+        "everything you need to run and review this output locally.",
+    )
 
 
 def _run_summary(runs: list[dict], run_id: str) -> str:

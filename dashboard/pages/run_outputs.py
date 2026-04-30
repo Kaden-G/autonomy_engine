@@ -272,28 +272,61 @@ def _render_intake_only(project_dir):
 
 
 def _render_download_button(project_dir: Path, run_id: str) -> None:
-    """Render the bundle-download button for the selected run.
+    """Render the bundle-download link for the selected run.
 
-    The zip is built fresh on every render (no @st.cache_data). Streamlit's
-    MediaFileHandler ties the download URL to a per-session registration of
-    the bytes; caching across sessions causes the URL to 404 once the
-    original session is cleaned up (laptop sleep, network blip, tab close).
-    Building fresh keeps the URL valid for the lifetime of the current
-    rerun, which is all we need.
+    Implementation note — why a base64 data URL instead of st.download_button:
+
+    `st.download_button(data=bytes)` registers the bytes in Streamlit's
+    in-process `MediaFileHandler` and emits a link to `/media/<file_id>.zip`.
+    On Fly we run >1 machine for zero-downtime deploys, and Fly's HTTP
+    load balancer round-robins requests across them. So the page render
+    can register the file_id on machine A, but the click for the download
+    URL can land on machine B — whose `MediaFileHandler` has no record.
+    Result: `MediaFileStorageError: Bad filename ... (No media file with
+    id ...)` and a 404 in the browser.
+
+    Embedding the zip as a base64 data URL sidesteps the problem entirely:
+    the bytes ARE the URL, so the download is fully client-side. No
+    server-side state, no per-session/per-process registration, no race
+    with the load balancer. The cost is ~33% size overhead in the HTML —
+    fine for run bundles in the tens-of-KB to a few-MB range.
     """
+    import base64
+
     try:
         zip_bytes = build_run_zip(project_dir, run_id)
     except Exception as e:  # noqa: BLE001 — surface any zip error to the user
         st.error(f"Could not build download bundle: {e}")
         return
 
-    st.download_button(
-        label=f"📦 Download project bundle  ·  {len(zip_bytes) / 1024:.0f} KB",
-        data=zip_bytes,
-        file_name=f"{project_dir.name}_{run_id}.zip",
-        mime="application/zip",
-        help="Generated code (code/) plus build receipts (_receipts/) — "
-        "everything you need to run and review this output locally.",
+    encoded = base64.b64encode(zip_bytes).decode("ascii")
+    file_name = f"{project_dir.name}_{run_id}.zip"
+    size_kb = len(zip_bytes) / 1024
+    href = f"data:application/zip;base64,{encoded}"
+
+    # Inline-styled <a> so the link visually reads as a Streamlit button.
+    # The colors track Streamlit's dark-theme defaults; if the dashboard's
+    # theme changes, adjust here too.
+    st.markdown(
+        f"""
+<a href="{href}" download="{file_name}" style="
+    display: inline-block;
+    padding: 8px 16px;
+    background-color: rgba(255, 255, 255, 0.04);
+    color: rgb(250, 250, 250);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    font-family: 'Source Sans Pro', sans-serif;
+    font-size: 14px;
+    text-decoration: none;
+    transition: border-color 150ms ease, background-color 150ms ease;
+" onmouseover="this.style.borderColor='rgba(255,75,75,0.5)'; this.style.color='rgb(255,75,75)';"
+   onmouseout="this.style.borderColor='rgba(255,255,255,0.12)'; this.style.color='rgb(250,250,250)';"
+   title="Generated code (code/) plus build receipts (_receipts/) — everything you need to run and review this output locally.">
+📦 Download project bundle · {size_kb:.0f} KB
+</a>
+""",
+        unsafe_allow_html=True,
     )
 
 

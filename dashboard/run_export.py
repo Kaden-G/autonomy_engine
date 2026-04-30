@@ -15,7 +15,6 @@ Everything else is project-level under state/.
 from __future__ import annotations
 
 import io
-import json
 import zipfile
 from pathlib import Path
 

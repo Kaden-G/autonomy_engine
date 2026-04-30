@@ -64,13 +64,13 @@ After ~3–5 minutes (Docker layer build + image push + machine start), Fly prin
 
 ### Deploy + redeploy
 
-After the initial setup, every code change deploys with:
+Auto-deploy on push to `main` is already configured via [.github/workflows/fly-deploy.yml](../.github/workflows/fly-deploy.yml), which calls `flyctl deploy --remote-only` against the `FLY_API_TOKEN` repo secret. In normal operation, you don't need to deploy by hand — `git push` is the deploy trigger.
+
+For a manual deploy (e.g. to test a config change without pushing), run:
 
 ```bash
 fly deploy
 ```
-
-To wire up GitHub Actions for auto-deploy on push to `main`, see [Fly.io's continuous-deployment docs](https://fly.io/docs/app-guides/continuous-deployment-with-github-actions/) — TL;DR: add a `FLY_API_TOKEN` repo secret and a workflow file that calls `flyctl deploy --remote-only`.
 
 ### Custom domain
 

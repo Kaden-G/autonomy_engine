@@ -1,7 +1,7 @@
 # Autonomy Engine v2.0
 
 ![CI](https://github.com/Kaden-G/autonomy_engine/actions/workflows/ci.yml/badge.svg)
-![Tests](https://img.shields.io/badge/tests-661%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-690%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-67%25%20engine%2Bgraph%2Btasks-blue)
 ![Security](https://img.shields.io/badge/bandit-1%20known%20%7C%200%20unexpected-yellow)
 ![Deps Pinned](https://img.shields.io/badge/deps-pinned%20%28lock%20file%29-blue)

@@ -176,7 +176,7 @@ The sidebar organizes pages into two groups.
 
 ### Security & ops pages
 
-**Run Outputs** — Browse every artifact from a pipeline run, organized by stage (design, implement, extract, test, verify). Select a run from the dropdown, then click any output file to read it inline — architecture docs, generated code, test results, verification reports.
+**Run Outputs** — Browse every artifact from a pipeline run, organized by stage (design, implement, extract, test, verify). Select a run from the dropdown, then click any output file to read it inline — architecture docs, generated code, test results, verification reports. A **Download project bundle** button beside the selector exports the run as a `.zip` containing the generated `code/` plus `_receipts/` (design contract, verification report, audit trail) so you can run and review the output locally.
 
 **Inspector** — The deep-dive view. Shows the complete trace timeline, individual evidence records (with command, exit code, and full output), every decision gate interaction, all artifacts, and the config snapshot that was active during the run.
 

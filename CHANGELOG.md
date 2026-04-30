@@ -14,4 +14,4 @@
 ## v2.0 — LangGraph migration (prior work)
 
 For changes prior to this changelog, see `git log` and
-`docs/prefect-sunset-audit.md`.
+[docs/migration-langgraph.md](docs/migration-langgraph.md).

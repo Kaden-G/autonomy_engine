@@ -35,7 +35,7 @@ Three independent tools provide ongoing due-diligence on the engine's own codeba
 
 ### Test coverage (pytest-cov)
 
-The engine has 661 automated tests covering the core modules. Coverage on engine/ + graph/ + tasks/ is **67%** on the testable surface. Modules with 0% coverage (cost_estimator, usage_tracker, notifier) depend on full pipeline integration — they are exercised during real pipeline runs but can't be unit-tested in isolation.
+The engine has 690 automated tests covering the core modules. Coverage on engine/ + graph/ + tasks/ is **67%** on the testable surface. Modules with 0% coverage (cost_estimator, usage_tracker, notifier) depend on full pipeline integration — they are exercised during real pipeline runs but can't be unit-tested in isolation.
 
 High-coverage modules (90%+): cache, contract_checker, design_contract, evidence, extraction, log_config, model_registry, prompt_guard, sandbox, spec_normalizer, state_loader, tier_context, tracer, graph.state, tasks.manifest_schema.
 

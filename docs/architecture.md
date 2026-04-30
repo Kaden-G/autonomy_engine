@@ -246,7 +246,7 @@ docker-compose.yml    One-command launch with volume mounts
 .github/workflows/
   ci.yml              GitHub Actions: lint, test (3.10–3.12), import check, security, trace-integrity
 
-tests/                Automated test suite (661 tests, 67% engine coverage)
+tests/                Automated test suite (690 tests, 67% engine coverage)
 bench/                Performance benchmarking tools
 specs/                Reference spec files for manual testing (not consumed by the pipeline)
 ```

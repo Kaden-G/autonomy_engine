@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
-# Reject commits that include .env files with real secrets.
+# Pre-commit hook:
+#   1. Reject commits that include .env files or files that look like they
+#      contain real API keys.
+#   2. Auto-format and auto-fix lint on staged Python files with Ruff so
+#      pushes don't fail the CI lint job for whitespace / unused-import
+#      issues that Ruff can fix on its own.
+#
+# Wire this hook up once with:
+#   git config core.hooksPath .githooks
+#
+# Bypass with `git commit --no-verify` (CI lint will still catch issues).
+
+set -u  # surface unset-variable bugs in this script
+
+# ── 1. Secret scan ──────────────────────────────────────────────────────────
 
 staged=$(git diff --cached --name-only)
 
@@ -16,3 +30,42 @@ for f in $staged; do
         exit 1
     fi
 done
+
+# ── 2. Ruff format + lint-fix on staged Python files ───────────────────────
+
+py_files=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$' || true)
+
+if [[ -z "$py_files" ]]; then
+    exit 0
+fi
+
+# Resolve a ruff invocation: prefer the installed binary, fall back to
+# `python3 -m ruff` for envs where the script isn't on PATH but the package
+# is importable. If neither works, warn and skip — don't block the commit
+# (CI lint will still catch issues).
+if command -v ruff &>/dev/null; then
+    ruff_cmd=(ruff)
+elif python3 -m ruff --version &>/dev/null; then
+    ruff_cmd=(python3 -m ruff)
+else
+    echo "WARN: ruff not installed — skipping format/lint pass."
+    echo "      Install with: pip install -e '.[dev]'   (or: pip install ruff)"
+    exit 0
+fi
+
+# Auto-format and auto-fix what's auto-fixable. --exit-zero makes the fix
+# step succeed even if some lint issues remain — we surface those below
+# with a final non-fix check.
+"${ruff_cmd[@]}" format $py_files
+"${ruff_cmd[@]}" check --fix --exit-zero $py_files
+
+# Re-stage anything Ruff modified.
+git add $py_files
+
+# Fail the commit if there are still lint issues that need human attention.
+if ! "${ruff_cmd[@]}" check $py_files; then
+    echo ""
+    echo "ERROR: ruff check found lint issues that need manual fixes."
+    echo "       Address the errors above and re-commit."
+    exit 1
+fi

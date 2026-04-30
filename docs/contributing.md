@@ -24,10 +24,10 @@ This is also a project *about* AI-supervised pipelines — building it with AI-a
 pip install -r requirements.txt    # production: pinned versions
 pip install -e ".[dev,dashboard]"   # editable with dev tools + dashboard
 cp .env.example .env                # add your ANTHROPIC_API_KEY
-git config core.hooksPath .githooks # pre-commit key-scan
+git config core.hooksPath .githooks # pre-commit: key-scan + ruff
 ```
 
-The `.env` file is excluded from version control. The pre-commit hook rejects any commit containing API key patterns.
+The `.env` file is excluded from version control. The pre-commit hook rejects any commit containing API key patterns, then runs `ruff format` and `ruff check --fix` on staged Python files so format / unused-import issues are auto-fixed before they reach CI.
 
 ## Quality assurance
 

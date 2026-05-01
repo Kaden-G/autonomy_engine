@@ -220,6 +220,37 @@ def render(project_dir):
                 st.session_state["page"] = "Inspector"
                 st.rerun()
 
+    # ── Project info ────────────────────────────────────────────────────
+    # These three fields live OUTSIDE the form below on purpose: the
+    # "Generate draft" button needs the current values to know whether to
+    # enable, and `st.form` widgets only sync to session_state on submit
+    # (so a button outside the form would always see empty values).
+    # Binding via `key=` here makes them update on every keystroke.
+    st.subheader("Project Info")
+    _domain_options = [d.value for d in Domain]
+    col_top1, col_top2 = st.columns([2, 1])
+    with col_top1:
+        st.text_input("Project Name *", key="cp_name")
+    with col_top2:
+        # `index=` is honored on first render only; `key=` takes over after.
+        _domain_idx = (
+            _domain_options.index(st.session_state["cp_domain"])
+            if st.session_state.get("cp_domain") in _domain_options
+            else 0
+        )
+        st.selectbox(
+            "Domain *",
+            options=_domain_options,
+            index=_domain_idx,
+            key="cp_domain",
+            format_func=lambda d: d.capitalize(),
+        )
+    st.text_area(
+        "Description * (min 10 characters)",
+        key="cp_description",
+        height=80,
+    )
+
     # ── LLM-powered intake suggestions ──────────────────────────────────
     # Matches the CLI's `new-project` flow, which offers LLM generation
     # of functional/non-functional/acceptance/artifacts from a project seed.
@@ -297,29 +328,11 @@ def render(project_dir):
     st.divider()
 
     # ── Create / edit form ──────────────────────────────────────────────
-    domain_options = [d.value for d in Domain]
+    # Project Info fields (name / domain / description) are rendered above,
+    # outside the form, so they live-sync to session_state. The form below
+    # carries everything else.
 
     with st.form("create_project_form"):
-        # -- Project Info -------------------------------------------------
-        st.subheader("Project Info")
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            name = st.text_input("Project Name *", value=st.session_state["cp_name"])
-        with col2:
-            domain = st.selectbox(
-                "Domain *",
-                options=domain_options,
-                index=domain_options.index(st.session_state["cp_domain"])
-                if st.session_state["cp_domain"] in domain_options
-                else 0,
-                format_func=lambda d: d.capitalize(),
-            )
-        description = st.text_area(
-            "Description * (min 10 characters)",
-            value=st.session_state["cp_description"],
-            height=80,
-        )
-
         # -- Requirements -------------------------------------------------
         st.subheader("Requirements")
         functional_raw = st.text_area(
@@ -372,10 +385,9 @@ def render(project_dir):
 
         submitted = st.form_submit_button("Create Project", type="primary")
 
-    # Always save current inputs back to session_state (persists across navigation)
-    st.session_state["cp_name"] = name
-    st.session_state["cp_domain"] = domain
-    st.session_state["cp_description"] = description
+    # Always save current inputs back to session_state (persists across navigation).
+    # cp_name / cp_domain / cp_description are managed by the live-bound widgets
+    # rendered above this form; only the form-internal widgets need explicit save.
     st.session_state["cp_functional"] = functional_raw
     st.session_state["cp_non_functional"] = non_functional_raw
     st.session_state["cp_tech_stack"] = tech_stack_raw
@@ -393,6 +405,12 @@ def render(project_dir):
         non_goals = _parse_lines(non_goals_raw)
         acceptance_criteria = _parse_lines(acceptance_raw)
         expected_artifacts = _parse_lines(artifacts_raw)
+
+        # Project Info fields come from the live-bound widgets above; read from
+        # session_state since the local form widgets no longer exist for them.
+        name = st.session_state["cp_name"]
+        domain = st.session_state["cp_domain"]
+        description = st.session_state["cp_description"]
 
         try:
             spec = ProjectSpec(

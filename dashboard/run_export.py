@@ -4,7 +4,9 @@ The dashboard's Run Outputs page exposes this as a download button so visitors
 can take their generated project home and run it locally.  The bundle has two
 parts, kept clearly separate:
 
-    code/        the runnable project (contents of state/build/)
+    code/        the runnable project — sourced from the extracted project
+                 tree (see tasks.extract.extracted_project_dir), plus the
+                 build inventory at state/build/MANIFEST.md
     _receipts/   the build provenance — design contract, verification report,
                  audit trail — useful for review or reproducing the result
 
@@ -17,6 +19,8 @@ from __future__ import annotations
 import io
 import zipfile
 from pathlib import Path
+
+from tasks.extract import extracted_project_dir
 
 # Project-level artifacts copied into _receipts/. Path is relative to state/.
 _RECEIPT_FILES = [
@@ -40,20 +44,30 @@ def build_run_zip(project_dir: Path, run_id: str) -> bytes:
     where the bundle should still let the user inspect what *did* land.
     """
     state_dir = project_dir / "state"
-    build_dir = state_dir / "build"
+    build_dir = state_dir / "build"  # holds MANIFEST.md only — code lives elsewhere
     run_dir = state_dir / "runs" / run_id
+    code_dir = extracted_project_dir(project_dir)  # the actual generated project tree
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         # Top-level README explaining what's in the bundle.
-        zf.writestr("README.md", _bundle_readme(project_dir.name, run_id, build_dir))
+        zf.writestr("README.md", _bundle_readme(project_dir, run_id))
 
-        # Generated code → code/
-        if build_dir.is_dir():
-            for path in sorted(build_dir.rglob("*")):
+        # Generated code → code/. The extractor writes the project tree as a
+        # sibling of the engine root (see tasks.extract.extracted_project_dir),
+        # not under state/build/, which only ever contains the build manifest.
+        if code_dir is not None and code_dir.is_dir():
+            for path in sorted(code_dir.rglob("*")):
                 if path.is_file():
-                    arcname = "code/" + str(path.relative_to(build_dir))
+                    arcname = "code/" + str(path.relative_to(code_dir))
                     zf.write(path, arcname)
+
+        # The build manifest lives in state/build/ alongside the receipts but
+        # belongs *with* the code in the bundle so users see the inventory next
+        # to the files it describes.
+        build_manifest = build_dir / "MANIFEST.md"
+        if build_manifest.is_file():
+            zf.write(build_manifest, "code/MANIFEST.md")
 
         # Project-level receipts → _receipts/
         for rel in _RECEIPT_FILES:
@@ -78,9 +92,11 @@ def build_run_zip(project_dir: Path, run_id: str) -> bytes:
     return buf.getvalue()
 
 
-def _bundle_readme(project_name: str, run_id: str, build_dir: Path) -> str:
+def _bundle_readme(project_dir: Path, run_id: str) -> str:
     """Render the top-level README that ships inside the zip."""
-    code_files = sorted(build_dir.rglob("*")) if build_dir.is_dir() else []
+    state_dir = project_dir / "state"
+    code_dir = extracted_project_dir(project_dir)
+    code_files = sorted(code_dir.rglob("*")) if code_dir is not None and code_dir.is_dir() else []
     code_count = sum(1 for p in code_files if p.is_file())
 
     if code_count > 0:
@@ -97,7 +113,6 @@ def _bundle_readme(project_name: str, run_id: str, build_dir: Path) -> str:
         )
 
     manifest_lines = []
-    state_dir = build_dir.parent
     for rel in _RECEIPT_FILES:
         if (state_dir / rel).is_file():
             manifest_lines.append(f"- `_receipts/{Path(rel).name}`")
@@ -108,7 +123,7 @@ def _bundle_readme(project_name: str, run_id: str, build_dir: Path) -> str:
     receipts_listing = "\n".join(manifest_lines) if manifest_lines else "_(no receipts available)_"
 
     return (
-        f"# {project_name} — autonomy-engine run {run_id}\n\n"
+        f"# {project_dir.name} — autonomy-engine run {run_id}\n\n"
         f"This bundle was produced by the Autonomy Engine "
         f"(<https://github.com/Kaden-G/autonomy_engine>). It has two parts:\n\n"
         f"## `code/` — the generated project\n\n"

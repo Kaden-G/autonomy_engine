@@ -10,10 +10,7 @@ based on the project type (Python, Node.js, etc.).  Contract compliance is alway
 checked — verifying that the generated code matches the design blueprint.
 """
 
-import re
 from pathlib import Path
-
-import yaml
 
 from engine.context import get_project_dir, get_state_dir
 from engine.contract_checker import check_contract_compliance
@@ -27,24 +24,17 @@ from engine.evidence import (
     save_evidence,
 )
 from engine.sandbox import collect_host_metadata, create_sandbox, load_sandbox_config
-from engine.state_loader import load_state_file, save_state_file
+from engine.state_loader import save_state_file
 from engine.tracer import get_run_id, trace
-
-
-def _slugify(name: str) -> str:
-    """Lowercase, replace spaces/underscores with hyphens, strip non-alphanumeric."""
-    slug = name.lower().strip()
-    slug = re.sub(r"[\s_]+", "-", slug)
-    slug = re.sub(r"[^a-z0-9\-]", "", slug)
-    return slug
+from tasks.extract import extracted_project_dir
 
 
 def _get_project_dir() -> Path:
     """Determine the extracted project directory from the project spec."""
-    spec_raw = load_state_file("inputs/project_spec.yml")
-    spec = yaml.safe_load(spec_raw)
-    project_name = spec["project"]["name"]
-    return get_project_dir().parent / _slugify(project_name)
+    extracted = extracted_project_dir(get_project_dir())
+    if extracted is None:
+        raise RuntimeError("Cannot resolve extracted project: project_spec.yml not found")
+    return extracted
 
 
 def _build_test_summary(evidence: list[dict]) -> str:

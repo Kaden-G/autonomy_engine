@@ -37,12 +37,31 @@ _MAX_TOTAL_BYTES_MVP = 750_000  # ~750 KB of source code
 _MAX_TOTAL_BYTES_PREMIUM = 5_000_000  # ~5 MB
 
 
-def _slugify(name: str) -> str:
+def slugify(name: str) -> str:
     """Lowercase, replace spaces/underscores with hyphens, strip non-alphanumeric."""
     slug = name.lower().strip()
     slug = re.sub(r"[\s_]+", "-", slug)
     slug = re.sub(r"[^a-z0-9\-]", "", slug)
     return slug
+
+
+def extracted_project_dir(project_dir: Path) -> Path | None:
+    """Return where extract_project() writes generated code, or None if no spec.
+
+    Single source of truth for the path convention: the extracted project lives
+    as a sibling of *project_dir*, named after the slugified project name from
+    state/inputs/project_spec.yml. Anything that needs to find the generated
+    code (the test runner, the zip bundler) must use this helper so the
+    convention stays in sync with the writer.
+    """
+    spec_path = project_dir / "state" / "inputs" / "project_spec.yml"
+    if not spec_path.is_file():
+        return None
+    spec = yaml.safe_load(spec_path.read_text())
+    name = (spec.get("project") or {}).get("name")
+    if not name:
+        return None
+    return project_dir.parent / slugify(name)
 
 
 def _load_and_validate_manifest(raw_json: str) -> FileManifest:
@@ -284,7 +303,7 @@ def extract_project() -> None:
     spec_raw = load_state_file("inputs/project_spec.yml")
     spec = yaml.safe_load(spec_raw)
     project_name = spec["project"]["name"]
-    slug = _slugify(project_name)
+    slug = slugify(project_name)
 
     # Output directory is a sibling of the active project directory
     output_dir = get_project_dir().parent / slug

@@ -14,9 +14,17 @@ has a tab open from before the pin) still leaves that tab pointed at a chunk
 URL the new image doesn't serve. This module installs a one-shot error handler
 that detects that exact failure and force-reloads the tab so users self-heal
 without knowing to hard-refresh.
+
+Implementation note: this used to call `streamlit.components.v1.html`, which
+Streamlit deprecated 2026-04 with removal after 2026-06-01 (and which was
+firing the deprecation warning on every rerun, flooding the deploy logs).
+The replacement is `st.html`, which renders inline in the main document
+context rather than in a sandboxed iframe — fine for our use case since
+the handlers we install attach to `window.top` and persist regardless of
+how the inline element is rendered.
 """
 
-import streamlit.components.v1 as components
+import streamlit as st
 
 _SCRIPT = """
 <script>
@@ -59,6 +67,20 @@ _SCRIPT = """
 """
 
 
+_SESSION_FLAG = "_chunk_recovery_installed"
+
+
 def install() -> None:
-    """Inject the stale-chunk recovery script. Idempotent across reruns."""
-    components.html(_SCRIPT, height=0)
+    """Inject the stale-chunk recovery script. Idempotent across reruns.
+
+    Streamlit reruns the script on every interaction, so an unguarded call
+    here would re-render the snippet every keystroke and (at minimum) spam
+    the deploy logs. Gate on session_state so the snippet renders at most
+    once per visitor session — the JS-side `__autonomyChunkRecoveryInstalled`
+    flag handles the unlikely case where the gate fails (e.g. session_state
+    cleared mid-session).
+    """
+    if st.session_state.get(_SESSION_FLAG):
+        return
+    st.html(_SCRIPT)
+    st.session_state[_SESSION_FLAG] = True

@@ -211,11 +211,13 @@ def _build_manifest(extracted_files: list[str], output_dir: Path) -> str:
     return "\n".join(lines)
 
 
-def _validate_content(filepath: str, content: str) -> str | None:
-    """Validate file content by type. Returns a warning string or None if valid.
+def _validate_content(filepath: str, content: str) -> dict | None:
+    """Validate file content by type. Returns a structured failure dict or None.
 
-    Catches malformed content early — before it reaches the test stage — so
-    the pipeline can flag extraction issues separately from test failures.
+    The dict shape is `{path, message, line?}` so callers can format readable
+    errors and feed them back to retry contexts. Catching malformed content
+    here — before it reaches the test stage — lets the pipeline distinguish
+    extraction failures (raw AI output bug) from test failures (logic bug).
     """
     import ast as _ast
 
@@ -225,21 +227,52 @@ def _validate_content(filepath: str, content: str) -> str | None:
         try:
             _ast.parse(content, filename=filepath)
         except SyntaxError as exc:
-            return f"{filepath}: Python syntax error at line {exc.lineno}: {exc.msg}"
+            return {
+                "path": filepath,
+                "message": f"Python syntax error: {exc.msg}",
+                "line": exc.lineno,
+            }
 
     elif ext == ".json":
         try:
             json.loads(content)
         except json.JSONDecodeError as exc:
-            return f"{filepath}: Invalid JSON: {exc.msg} (line {exc.lineno})"
+            return {
+                "path": filepath,
+                "message": f"Invalid JSON: {exc.msg}",
+                "line": exc.lineno,
+            }
 
     elif ext in (".yml", ".yaml"):
         try:
             yaml.safe_load(content)
         except yaml.YAMLError as exc:
-            return f"{filepath}: Invalid YAML: {exc}"
+            return {
+                "path": filepath,
+                "message": f"Invalid YAML: {exc}",
+                "line": None,
+            }
 
     return None
+
+
+class ExtractionValidationError(Exception):
+    """Raised when one or more manifest files fail content validation.
+
+    Carries a structured *failures* list (each item is a dict with path,
+    message, and line) so upstream callers — notably the graph's extract_node
+    — can route the failure into the implement-retry loop with enough
+    context to be actionable.
+    """
+
+    def __init__(self, failures: list[dict]):
+        self.failures = failures
+        summary = "; ".join(
+            f"{f['path']}:{f.get('line') or '?'} {f['message']}" for f in failures[:5]
+        )
+        if len(failures) > 5:
+            summary += f"; (+{len(failures) - 5} more)"
+        super().__init__(f"Extraction validation failed for {len(failures)} file(s): {summary}")
 
 
 _DEV_TOOLS = ["ruff", "mypy"]
@@ -291,7 +324,14 @@ def _sanitize_requirements(project_dir: Path) -> None:
 
 
 def extract_project() -> None:
-    """Load FILE_MANIFEST.json, validate schema, write files to project folder."""
+    """Load FILE_MANIFEST.json, validate schema + content, write files atomically.
+
+    Raises ExtractionValidationError if any Python/JSON/YAML file in the
+    manifest has a syntax error. The check runs against every file before
+    any write, so a partial-write does not leave the project tree in an
+    inconsistent state — the graph either gets a clean extract or routes
+    back to implement for retry (see graph/pipeline.py:route_after_extract).
+    """
     # Load manifest JSON
     raw_json = load_state_file("implementations/FILE_MANIFEST.json")
     manifest = _load_and_validate_manifest(raw_json)
@@ -308,27 +348,34 @@ def extract_project() -> None:
     # Output directory is a sibling of the active project directory
     output_dir = get_project_dir().parent / slug
 
-    # Write each file (with path safety + content validation)
+    # Pass 1: validate every file's content BEFORE touching disk. Previously we
+    # logged warnings and wrote anyway, which let raw syntax errors land on disk
+    # only to be caught by the test stage's syntax-check sandbox run — wasting a
+    # full sandbox spin-up. Now we collect all failures, then fail the stage so
+    # the graph can route back to implement with the structured error list.
+    failures: list[dict] = []
+    for entry in manifest.files:
+        failure = _validate_content(entry.path, entry.content)
+        if failure:
+            failures.append(failure)
+
+    if failures:
+        # Persist for auditors / dashboard, then raise so extract_node can
+        # surface the failures to the retry loop (see graph/pipeline.py:
+        # route_after_extract).
+        save_state_file(
+            "implementations/EXTRACT_VALIDATION_FAILURES.json",
+            json.dumps({"failures": failures}, indent=2),
+        )
+        raise ExtractionValidationError(failures)
+
+    # Pass 2: write files (only reached if every file validated cleanly).
     written_paths: list[str] = []
-    validation_warnings: list[str] = []
     for entry in manifest.files:
         dest = _safe_path(output_dir, entry.path)
         dest.parent.mkdir(parents=True, exist_ok=True)
-
-        # Validate content by file type before writing
-        warning = _validate_content(entry.path, entry.content)
-        if warning:
-            validation_warnings.append(warning)
-
         dest.write_text(entry.content + "\n")
         written_paths.append(entry.path)
-
-    if validation_warnings:
-        logger.warning(
-            "Content validation: %d warning(s):\n%s",
-            len(validation_warnings),
-            "\n".join(f"  - {w}" for w in validation_warnings),
-        )
 
     # Post-extraction: sanitize requirements.txt (relax exact pins, add dev tools)
     _sanitize_requirements(output_dir)

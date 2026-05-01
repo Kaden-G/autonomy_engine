@@ -4,8 +4,18 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
-from tasks.extract import _safe_path, _load_and_validate_manifest
+import engine.context
+import engine.tracer as tracer
+from engine.tracer import GENESIS_HASH
+from tasks.extract import (
+    ExtractionValidationError,
+    _load_and_validate_manifest,
+    _safe_path,
+    _validate_content,
+    extract_project,
+)
 
 
 # ── _safe_path: malicious inputs ─────────────────────────────────────────────
@@ -210,3 +220,140 @@ class TestManifestPathSafety:
         assert manifest.files[0].path == "/etc/passwd"
         with pytest.raises(ValueError, match="Absolute path"):
             _safe_path(self.root, manifest.files[0].path)
+
+
+# ── _validate_content: per-file syntax checks ────────────────────────────────
+
+
+class TestValidateContent:
+    """The pre-extract validator catches malformed content before it lands on disk."""
+
+    def test_valid_python_returns_none(self):
+        assert _validate_content("main.py", "print('hi')\n") is None
+
+    def test_invalid_python_returns_failure_dict(self):
+        # Missing colon on the for-loop — exact shape of the bug we hit on the demo.
+        broken = "for bullet in bullets[:]\n    pass\n"
+        result = _validate_content("main.py", broken)
+        assert result is not None
+        assert result["path"] == "main.py"
+        assert "syntax error" in result["message"].lower()
+        assert result["line"] == 1
+
+    def test_invalid_json_returns_failure_dict(self):
+        result = _validate_content("config.json", "{not valid json}")
+        assert result is not None
+        assert result["path"] == "config.json"
+        assert "JSON" in result["message"]
+
+    def test_invalid_yaml_returns_failure_dict(self):
+        result = _validate_content("c.yml", "key: value\n  bad indent: x:\n :::")
+        assert result is not None
+        assert result["path"] == "c.yml"
+        assert "YAML" in result["message"]
+
+    def test_unknown_extension_skipped(self):
+        # Non-validated file types should pass through (e.g. plain text, markdown).
+        assert _validate_content("README.md", "# anything\n```\nbroken\n") is None
+        assert _validate_content("requirements.txt", "junk\n") is None
+
+
+# ── ExtractionValidationError ────────────────────────────────────────────────
+
+
+class TestExtractionValidationError:
+    def test_carries_failures(self):
+        failures = [{"path": "a.py", "message": "syntax error", "line": 5}]
+        err = ExtractionValidationError(failures)
+        assert err.failures == failures
+        assert "a.py" in str(err)
+        assert "1 file" in str(err)
+
+    def test_summary_truncates_long_lists(self):
+        failures = [{"path": f"f{i}.py", "message": "syntax error", "line": 1} for i in range(8)]
+        err = ExtractionValidationError(failures)
+        # Ensure all eight aren't dumped into __str__ inline; tail message indicates truncation.
+        assert "+3 more" in str(err)
+
+
+# ── extract_project: atomic validation ───────────────────────────────────────
+
+
+def _seed_run(tmp_path, manifest_files: list[dict], project_name: str = "Demo App"):
+    """Seed engine context, project_spec, and FILE_MANIFEST for an extract_project call."""
+    engine.context.init(tmp_path)
+    state = tmp_path / "state"
+    (state / "inputs").mkdir(parents=True)
+    (state / "implementations").mkdir(parents=True)
+    (state / "inputs" / "project_spec.yml").write_text(
+        yaml.dump({"project": {"name": project_name, "description": "x", "domain": "software"}})
+    )
+    (state / "implementations" / "FILE_MANIFEST.json").write_text(
+        json.dumps({"files": manifest_files})
+    )
+    # Reset tracer module state so trace() doesn't error on missing run.
+    tracer._run_id = "test-run"
+    tracer._prev_hash = GENESIS_HASH
+    tracer._seq = 0
+    (state / "runs" / "test-run").mkdir(parents=True)
+
+
+@pytest.fixture(autouse=True)
+def _reset_tracer():
+    yield
+    tracer._run_id = None
+    tracer._prev_hash = GENESIS_HASH
+    tracer._seq = 0
+
+
+class TestExtractProjectValidationGate:
+    """extract_project() must atomically reject manifests with broken Python."""
+
+    def test_rejects_syntax_error_before_writing(self, tmp_path):
+        _seed_run(
+            tmp_path,
+            [
+                {"path": "ok.py", "content": "print('hi')"},
+                {"path": "broken.py", "content": "for x in y\n    pass"},  # missing colon
+            ],
+        )
+
+        with pytest.raises(ExtractionValidationError) as exc_info:
+            extract_project()
+
+        # Failure list reaches the raiser intact.
+        failures = exc_info.value.failures
+        assert any(f["path"] == "broken.py" for f in failures)
+        assert all("path" in f and "message" in f for f in failures)
+
+        # Atomic semantics: nothing landed on disk for this run's output_dir.
+        output_dir = tmp_path.parent / "demo-app"
+        assert not output_dir.exists() or not any(output_dir.iterdir())
+
+    def test_failures_persisted_to_state(self, tmp_path):
+        _seed_run(
+            tmp_path,
+            [{"path": "broken.py", "content": "def f(:"}],
+        )
+        with pytest.raises(ExtractionValidationError):
+            extract_project()
+
+        report = tmp_path / "state" / "implementations" / "EXTRACT_VALIDATION_FAILURES.json"
+        assert report.is_file()
+        payload = json.loads(report.read_text())
+        assert payload["failures"][0]["path"] == "broken.py"
+
+    def test_clean_manifest_writes_files(self, tmp_path):
+        _seed_run(
+            tmp_path,
+            [
+                {"path": "ok.py", "content": "print('hi')"},
+                {"path": "lib/utils.py", "content": "def add(a, b):\n    return a + b"},
+            ],
+        )
+        # No exception expected.
+        extract_project()
+
+        output_dir = tmp_path.parent / "demo-app"
+        assert (output_dir / "ok.py").is_file()
+        assert (output_dir / "lib" / "utils.py").is_file()

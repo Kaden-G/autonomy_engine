@@ -93,12 +93,38 @@ def route_after_implement(state: PipelineState) -> Literal["extract", "__end__"]
     return "extract"
 
 
-def route_after_extract(state: PipelineState) -> Literal["test", "__end__"]:
-    """Route after extract — proceed to testing or abort."""
+def route_after_extract(state: PipelineState) -> Literal["test", "implement", "__end__"]:
+    """Route after extract — proceed to testing, retry implement, or abort.
+
+    Three outcomes:
+    1. Extract passed → test
+    2. Extract failed with validation errors + retries remaining → implement
+       (the AI's output had syntax errors etc.; re-running implement gives
+       it another shot before any sandbox spin-up).
+    3. Extract failed for any other reason, or retry budget exhausted → END.
+    """
     result = state.get("stage_results", {}).get("extract")
-    if result and result.status == StageStatus.FAILED:
-        return END
-    return "test"
+    if result is None or result.status != StageStatus.FAILED:
+        return "test"
+
+    failure_type = (result.metadata or {}).get("failure_type") if result.metadata else None
+    if failure_type == "validation":
+        retry_count = state.get("retry_count", 0)
+        max_retries = state.get("max_retries", 1)
+        if retry_count < max_retries:
+            logger.info(
+                "Extract validation failed. Retrying implementation (%d/%d).",
+                retry_count + 1,
+                max_retries,
+            )
+            return "implement"
+        logger.warning(
+            "Extract validation failed but retry budget exhausted (%d/%d).",
+            retry_count,
+            max_retries,
+        )
+
+    return END
 
 
 def route_after_test(

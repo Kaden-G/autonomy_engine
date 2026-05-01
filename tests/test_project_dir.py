@@ -170,11 +170,11 @@ class TestTestStageResolution:
         (inputs_dir / "project_spec.yml").write_text(yaml.dump(spec))
         init_run()
 
-        from tasks.extract import _slugify
+        from tasks.extract import slugify
         from tasks.test import _get_project_dir as get_test_project_dir
 
         # Extract would write to:
-        extract_output = get_project_dir().parent / _slugify("Shared App")
+        extract_output = get_project_dir().parent / slugify("Shared App")
 
         # Test stage resolves to:
         test_dir = get_test_project_dir()

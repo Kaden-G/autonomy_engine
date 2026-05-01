@@ -137,6 +137,38 @@ class TestRouteAfterExtract:
         }
         assert route_after_extract(state) == "__end__"
 
+    def test_validation_failure_with_retries_routes_to_implement(self):
+        """Syntax errors etc. should give the implement stage another shot."""
+        state: PipelineState = {
+            "stage_results": {
+                "extract": StageResult(
+                    status=StageStatus.FAILED,
+                    error="Extraction validation failed",
+                    metadata={
+                        "failure_type": "validation",
+                        "failures": [{"path": "main.py", "message": "syntax error", "line": 1}],
+                    },
+                ),
+            },
+            "retry_count": 0,
+            "max_retries": 1,
+        }
+        assert route_after_extract(state) == "implement"
+
+    def test_validation_failure_without_retries_ends(self):
+        state: PipelineState = {
+            "stage_results": {
+                "extract": StageResult(
+                    status=StageStatus.FAILED,
+                    error="Extraction validation failed",
+                    metadata={"failure_type": "validation", "failures": []},
+                ),
+            },
+            "retry_count": 1,
+            "max_retries": 1,
+        }
+        assert route_after_extract(state) == "__end__"
+
 
 class TestRouteAfterTest:
     """The most complex routing — handles retries, aborts, and pass-through."""

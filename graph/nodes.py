@@ -55,7 +55,7 @@ from graph.state import Decision, PipelineState, StageResult, StageStatus
 # Import task functions — these are the actual workers
 from tasks.bootstrap import bootstrap_project
 from tasks.design import design_system
-from tasks.extract import extract_project
+from tasks.extract import ExtractionValidationError, extract_project
 from tasks.implement import implement_system
 from tasks.test import test_system
 from tasks.verify import verify_system
@@ -529,6 +529,9 @@ def extract_node(state: PipelineState) -> dict[str, Any]:
     """Parse AI output into files on disk.
 
     No decision gate. Has a circuit breaker for safety (file count/size limits).
+    Validation failures (syntax errors etc.) surface as a distinct failure
+    type so route_after_extract can send them back to implement for retry —
+    other failures (manifest schema violations, IO errors) terminate.
     """
     logger.info("Starting extraction...")
     try:
@@ -542,6 +545,23 @@ def extract_node(state: PipelineState) -> dict[str, Any]:
                     artifacts=["build/MANIFEST.md"],
                 ),
             },
+        }
+    except ExtractionValidationError as e:
+        logger.error("Extraction validation failed: %s", e)
+        return {
+            "current_stage": "extract",
+            "stage_results": {
+                **state.get("stage_results", {}),
+                "extract": StageResult(
+                    status=StageStatus.FAILED,
+                    error=str(e),
+                    metadata={
+                        "failure_type": "validation",
+                        "failures": e.failures,
+                    },
+                ),
+            },
+            "error": f"Extraction validation failed: {e}",
         }
     except Exception as e:
         logger.error("Extraction failed: %s", e)

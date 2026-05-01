@@ -26,6 +26,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 # project root isn't on sys.path.
 import streamlit as st  # noqa: E402
 
+from dashboard.components.chunk_recovery import install as install_chunk_recovery  # noqa: E402
 from dashboard.data_loader import find_project_dir  # noqa: E402
 from dashboard.pages import (  # noqa: E402
     audit_trail,
@@ -59,6 +60,13 @@ st.set_page_config(
 # -- Global Theme CSS -----------------------------------------------------
 
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
+
+# -- Stale-chunk Recovery -------------------------------------------------
+# Auto-reload a tab once when Streamlit fails to fetch a lazy-loaded JS chunk
+# (e.g. the user has an `index.html` cached from a previous deploy). See
+# dashboard/components/chunk_recovery.py for context.
+
+install_chunk_recovery()
 
 # -- Secrets Bridge -------------------------------------------------------
 # On Streamlit Cloud, API keys live in st.secrets.  The engine expects them

@@ -6,7 +6,6 @@ the filesystem.  It deliberately avoids importing any engine modules so that loa
 the dashboard doesn't trigger pipeline initialization.
 """
 
-import hashlib
 import json
 from pathlib import Path
 
@@ -161,48 +160,17 @@ def load_trace(project_dir: Path, run_id: str) -> list[dict]:
 
 
 def verify_trace_integrity(project_dir: Path, run_id: str) -> tuple[bool, list[str]]:
-    """Replay the hash chain and report breaks. Returns (is_valid, errors)."""
-    trace_path = get_state_dir(project_dir) / "runs" / run_id / "trace.jsonl"
-    if not trace_path.exists():
-        return False, [f"trace.jsonl not found for run {run_id}"]
+    """Replay the hash chain and report breaks. Returns (is_valid, errors).
 
-    text = trace_path.read_text().strip()
-    if not text:
-        return False, ["trace.jsonl is empty"]
+    Delegates to the engine's verifier. Trace entries are signed with a
+    per-run keyed HMAC (engine/tracer.py), not a plain SHA-256; a local
+    re-implementation that recomputed SHA-256 flagged every genuine run as
+    tampered. The engine resolves the signing key via AE_TRACE_KEY_DIR, the
+    same way the ``engine.verify_trace`` CLI does.
+    """
+    from engine.tracer import verify_trace_integrity as _engine_verify
 
-    errors = []
-    expected_prev = "0" * 64  # GENESIS_HASH
-
-    for i, line in enumerate(text.splitlines()):
-        try:
-            entry = json.loads(line)
-        except json.JSONDecodeError as exc:
-            errors.append(f"Line {i}: invalid JSON - {exc}")
-            break
-
-        stored_hash = entry.pop("entry_hash", None)
-        if stored_hash is None:
-            errors.append(f"Line {i}: missing entry_hash")
-            break
-
-        if entry.get("prev_hash") != expected_prev:
-            errors.append(
-                f"Line {i}: prev_hash mismatch "
-                f"(expected {expected_prev[:16]}..., "
-                f"got {entry.get('prev_hash', '<missing>')[:16]}...)"
-            )
-
-        canonical = json.dumps(entry, sort_keys=True, separators=(",", ":"))
-        computed = hashlib.sha256(canonical.encode()).hexdigest()
-        if computed != stored_hash:
-            errors.append(
-                f"Line {i}: entry_hash mismatch "
-                f"(expected {computed[:16]}..., got {stored_hash[:16]}...)"
-            )
-
-        expected_prev = stored_hash
-
-    return len(errors) == 0, errors
+    return _engine_verify(run_id, state_dir=get_state_dir(project_dir))
 
 
 # -- Evidence -------------------------------------------------------------

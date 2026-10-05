@@ -243,6 +243,21 @@ def _render_completion_status(project_dir):
                 )
 
 
+def _render_process_log(tail_chars: int = 2000) -> None:
+    """Show the tail of the launch subprocess's log file, if there is one."""
+    log_path = st.session_state.get("pipeline_log")
+    if not log_path:
+        return
+    try:
+        with open(log_path, "rb") as fh:
+            out = fh.read().decode(errors="replace")
+    except OSError:
+        return
+    if out.strip():
+        with st.expander("Process output"):
+            st.code(out[-tail_chars:], language=None)
+
+
 # ── Pending-gate form (human-in-the-loop) ───────────────────────────────────
 
 
@@ -257,6 +272,19 @@ def _resume_graph(project_dir, run_id: str, thread_id: str, choice: str, rationa
     from langgraph.checkpoint.sqlite import SqliteSaver
     from langgraph.types import Command
     from graph.pipeline import build_graph, _write_run_status
+
+    from engine.context import init as init_context
+    from engine.tier_context import set_tier
+
+    # The graph runs in-process, on this Streamlit script thread. The engine's
+    # project context and build tier are thread-local and were only ever set
+    # inside the launch subprocess, so without this the resumed nodes fall
+    # back to the engine root for state/ and to Premium scope even for an
+    # MVP run.
+    init_context(str(project_dir))
+    tier = st.session_state.get("pipeline_tier")
+    if tier:
+        set_tier(tier)
 
     checkpoint_db = st.session_state.get("checkpoint_db") or str(
         project_dir / "state" / "checkpoints.sqlite"
@@ -380,26 +408,39 @@ def render(project_dir):
             # SQLite (not MemorySaver) is what lets the resume-after-gate
             # flow work across the subprocess → Streamlit-process boundary.
             checkpoint_db = str(project_dir / "state" / "checkpoints.sqlite")
-            process = subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
-                    "graph.pipeline",
-                    "--project-dir",
-                    str(project_dir),
-                    "--tier",
-                    selected,
-                    "--checkpoint-db",
-                    checkpoint_db,
-                ],
-                cwd=str(project_dir)
-                if (project_dir / "dashboard").is_dir()
-                else str(project_dir.parent),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                env=child_env,
-            )
+            # Send the child's output to a file, not a pipe. Nothing reads a
+            # PIPE while the run is in flight (it was only read after exit,
+            # and only on failure), so once the engine's logging filled the
+            # ~64 KB pipe buffer the child blocked on write() and the page
+            # showed "Pipeline is running…" forever.
+            log_dir = project_dir / "state" / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = log_dir / f"pipeline-{time.strftime('%Y%m%d-%H%M%S')}.log"
+            with open(log_path, "wb") as log_fh:
+                process = subprocess.Popen(
+                    [
+                        sys.executable,
+                        "-m",
+                        "graph.pipeline",
+                        "--project-dir",
+                        str(project_dir),
+                        "--tier",
+                        selected,
+                        "--checkpoint-db",
+                        checkpoint_db,
+                    ],
+                    cwd=str(project_dir)
+                    if (project_dir / "dashboard").is_dir()
+                    else str(project_dir.parent),
+                    stdout=log_fh,
+                    stderr=subprocess.STDOUT,
+                    env=child_env,
+                )
             st.session_state["pipeline_process"] = process
+            st.session_state["pipeline_log"] = str(log_path)
+            # Needed again if the run pauses at a gate and is resumed
+            # in-process (see _resume_graph).
+            st.session_state["pipeline_tier"] = selected
             st.session_state["checkpoint_db"] = checkpoint_db
             st.session_state.pop("show_tier_selection", None)
             st.session_state.pop("cost_estimate", None)
@@ -427,17 +468,18 @@ def render(project_dir):
                 st.info("Pipeline is running…")
             elif proc is not None:
                 rc = proc.poll()
-                if rc == 0:
+                latest_run = get_latest_run_id(project_dir)
+                status = load_run_status(project_dir, latest_run) if latest_run else None
+                if rc == 0 and (status or {}).get("state") == "paused":
+                    # graph.pipeline exits 0 when it parks at a human gate.
+                    # That's a pause, not a completion — the decision form
+                    # renders below.
+                    st.info("Pipeline paused — a decision is required below.")
+                elif rc == 0:
                     _render_completion_status(project_dir)
                 else:
                     st.error(f"Pipeline exited with code {rc}.")
-                    try:
-                        out = proc.stdout.read().decode(errors="replace") if proc.stdout else ""
-                        if out:
-                            with st.expander("Process output"):
-                                st.code(out[-2000:])
-                    except Exception:
-                        pass
+                    _render_process_log()
 
     # ── Section B0: Pending human-in-the-loop decision ──────────────────
     # When the LangGraph subprocess hits a `pause` gate, it drops

@@ -165,6 +165,34 @@ def _load_spec_into_form(spec: dict):
     st.session_state["cp_artifacts"] = "\n".join(outputs.get("expected_artifacts", []))
 
 
+def _queue_spec_import(spec: dict, notice: str) -> None:
+    """Stage a spec to be loaded into the form at the start of the next run.
+
+    `_load_spec_into_form` writes the `cp_*` session keys, and three of them
+    (`cp_name`, `cp_domain`, `cp_description`) belong to widgets rendered
+    *above* the YAML-import expander. Streamlit refuses to modify a widget's
+    key once that widget has been instantiated in the current run, so
+    calling `_load_spec_into_form` from the import button crashed the page.
+    Park the spec here instead and apply it before any widget exists.
+    """
+    st.session_state["cp_pending_import"] = {"spec": spec, "notice": notice}
+
+
+def _apply_pending_import() -> None:
+    pending = st.session_state.pop("cp_pending_import", None)
+    if pending:
+        _load_spec_into_form(pending["spec"])
+        st.session_state["cp_import_notice"] = pending["notice"]
+
+
+def _go_to_run_pipeline() -> None:
+    # on_click callback: runs at the start of the next rerun, before the
+    # script body. The button that triggers it is rendered inside
+    # `if submitted:`, and `submitted` is False on that rerun, so an
+    # `if st.button(...)` check there could never observe the click.
+    st.session_state["page"] = "Run Pipeline"
+
+
 def render(project_dir):
     st.title("Create Project")
 
@@ -180,6 +208,10 @@ def render(project_dir):
     )
 
     _init_session_defaults()
+    _apply_pending_import()
+    import_notice = st.session_state.pop("cp_import_notice", None)
+    if import_notice:
+        st.success(import_notice)
 
     # ── Project management bar ──────────────────────────────────────────
     st.subheader("Project Manager")
@@ -302,9 +334,9 @@ def render(project_dir):
                     help="Populate the form below from the YAML. You still need to submit.",
                 ):
                     if parsed["ok"]:
-                        _load_spec_into_form(parsed["spec"].model_dump())
-                        st.success(
-                            f"Imported '{parsed['spec'].project.name}'. Review and submit below."
+                        _queue_spec_import(
+                            parsed["spec"].model_dump(mode="json"),
+                            f"Imported '{parsed['spec'].project.name}'. Review and submit below.",
                         )
                         st.rerun()
                     else:
@@ -448,6 +480,4 @@ def render(project_dir):
             st.markdown(f"- `state/{path}`")
 
         st.info("Head to **Run Pipeline** to start the build.")
-        if st.button("Go to Run Pipeline"):
-            st.session_state["page"] = "Run Pipeline"
-            st.rerun()
+        st.button("Go to Run Pipeline", on_click=_go_to_run_pipeline)

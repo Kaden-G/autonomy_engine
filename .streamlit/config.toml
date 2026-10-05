@@ -1,0 +1,16 @@
+# Streamlit client/UI configuration for the dashboard.
+#
+# Runtime/server settings (headless, port, XSRF, ...) live as STREAMLIT_* env
+# vars in the Dockerfile so they can differ per deployment. This file is for
+# settings that are part of the UI itself and should apply everywhere the
+# dashboard runs — locally, in docker compose, and on Fly.
+
+[client]
+# dashboard/app.py is a single-page app with its own sidebar router. But the
+# page modules live in dashboard/pages/, and Streamlit treats any `pages/`
+# directory next to the entrypoint as a multipage app: it auto-renders a list
+# of file names (app, audit trail, benchmarks, ...) at the top of the sidebar.
+# Those links bypass the router — clicking one runs the module standalone and
+# renders nothing — so hide the auto-nav and let the radio buttons own the
+# sidebar.
+showSidebarNavigation = false

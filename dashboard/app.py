@@ -100,12 +100,17 @@ if project_dir is None:
 
 # -- Sidebar Navigation --------------------------------------------------
 
-# Navigation structure:
-#   Dashboard
-#   Create Project
-#   Run Pipeline
-#   ── Security ──
-#     Inspector  |  Audit Trail  |  Configuration  |  Benchmarks
+# Sidebar layout (top → bottom):
+#   🏗️ Autonomy Engine / Project: <name>    brand header
+#   Dashboard | Pipeline Explorer |          primary nav
+#     Create Project | Run Pipeline
+#   ── Security & Ops ──
+#   Run Outputs | Inspector | Audit Trail |  secondary nav
+#     Configuration | Benchmarks
+#   footer tagline
+#
+# Streamlit's own multipage auto-nav (triggered by the dashboard/pages/ folder)
+# is disabled in .streamlit/config.toml so it doesn't render above all this.
 
 PRIMARY_PAGES = ["Dashboard", "Pipeline Explorer", "Create Project", "Run Pipeline"]
 SECURITY_PAGES = ["Run Outputs", "Inspector", "Audit Trail", "Configuration", "Benchmarks"]
@@ -132,6 +137,46 @@ if "page" not in st.session_state:
 if st.session_state["page"] == "Run Inspector":
     st.session_state["page"] = "Inspector"
 
+
+# The sidebar is two independent st.radio widgets (primary + security) that
+# must behave like one. `page` is the single source of truth:
+#
+#   * Before the radios render, mirror `page` into both widgets' session-state
+#     keys, so in-page navigation (`st.session_state["page"] = X; st.rerun()`)
+#     is reflected in the sidebar and only one radio ever shows a selection.
+#   * When the user clicks a radio, its on_change callback writes `page` and
+#     clears the other radio. Callbacks run before the rerun, so the mirror
+#     step above then sees a consistent state.
+#
+# The previous approach inferred the click by diffing each radio's value
+# against a `_last_*` copy. A keyed radio keeps its value across reruns, so
+# switching from a primary page to a security page left both radios with a
+# selection (two highlighted items), and in-page navigation never updated
+# the radios at all.
+
+
+def _sync_nav_widgets() -> None:
+    page = st.session_state["page"]
+    st.session_state["nav_primary"] = page if page in PRIMARY_PAGES else None
+    st.session_state["nav_security"] = page if page in SECURITY_PAGES else None
+
+
+def _on_primary_change() -> None:
+    choice = st.session_state.get("nav_primary")
+    if choice:
+        st.session_state["page"] = choice
+        st.session_state["nav_security"] = None
+
+
+def _on_security_change() -> None:
+    choice = st.session_state.get("nav_security")
+    if choice:
+        st.session_state["page"] = choice
+        st.session_state["nav_primary"] = None
+
+
+_sync_nav_widgets()
+
 with st.sidebar:
     # Brand header
     st.markdown(
@@ -150,17 +195,14 @@ with st.sidebar:
     st.markdown("<div style='height: 12px'></div>", unsafe_allow_html=True)
 
     # ── Primary navigation ──
-    selected = st.radio(
+    st.radio(
         "Main",
         PRIMARY_PAGES,
-        index=(
-            PRIMARY_PAGES.index(st.session_state["page"])
-            if st.session_state["page"] in PRIMARY_PAGES
-            else 0
-        ),
+        index=None,
         format_func=lambda p: f"{PAGE_ICONS[p]}  {p}",
         label_visibility="collapsed",
         key="nav_primary",
+        on_change=_on_primary_change,
     )
 
     # ── Security section ──
@@ -175,28 +217,15 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    security_selection = st.radio(
+    st.radio(
         "Security",
         SECURITY_PAGES,
-        index=(
-            SECURITY_PAGES.index(st.session_state["page"])
-            if st.session_state["page"] in SECURITY_PAGES
-            else None
-        ),
+        index=None,
         format_func=lambda p: f"{PAGE_ICONS[p]}  {p}",
         label_visibility="collapsed",
         key="nav_security",
+        on_change=_on_security_change,
     )
-
-    # Resolve which radio was actually clicked (Streamlit radios are independent)
-    # The one that changed from the stored page is the active selection.
-    if selected and selected != st.session_state.get("_last_primary"):
-        st.session_state["page"] = selected
-    elif security_selection and security_selection != st.session_state.get("_last_security"):
-        st.session_state["page"] = security_selection
-
-    st.session_state["_last_primary"] = selected
-    st.session_state["_last_security"] = security_selection
 
     # Footer
     st.markdown("<div style='height: 24px'></div>", unsafe_allow_html=True)

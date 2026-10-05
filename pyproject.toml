@@ -22,7 +22,12 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=9.0,<10",
-    "ruff>=0.4,<1",
+    # CI's lint job installs this extra (not requirements-dev.txt), so the
+    # range decides which ruff actually runs. 0.16 broadened the default rule
+    # set and reports ~130 new findings across the repo; keep CI on the same
+    # minor as the lock file (ruff==0.15.12) until that migration is done on
+    # purpose.
+    "ruff>=0.15,<0.16",
     "pip-tools>=7.0",
 ]
 dashboard = [
